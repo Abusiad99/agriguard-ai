@@ -1,0 +1,46 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TB
+    Farmer(("Farmer"))
+    Agronomist(("Agronomist"))
+    Admin(("Admin"))
+    WeatherAPI(("Weather API"))
+
+    P1(["1.0 Authenticate &\nManage Account\n(FR-AUTH-1..5)"])
+    P2(["2.0 Process Plant Scan\n(FR-SCAN, FR-AI)"])
+    P3(["3.0 Generate Recommendations\n& Report\n(FR-TREAT, FR-WEATHER, FR-REPORT)"])
+    P4(["4.0 Manage History &\nDashboard\n(FR-HIST, FR-DASH)"])
+    P5(["5.0 Manage Knowledge Base\n(FR-ADMIN-2/3)"])
+    P6(["6.0 Administer Users &\nSystem Analytics\n(FR-ADMIN-1/4)"])
+
+    D1[("D1: Users")]
+    D2[("D2: Diagnoses")]
+    D3[("D3: Knowledge Base")]
+    D4[("D4: Reports")]
+
+    Farmer -- "credentials" --> P1
+    P1 -- "JWT tokens" --> Farmer
+    P1 <--> D1
+
+    Farmer -- "image" --> P2
+    P2 -- "raw diagnosis\n(plant, disease, severity, confidence, ROI)" --> P3
+    P2 -- "write diagnosis" --> D2
+    P2 -- "lookup taxonomy/species rules" --> D3
+
+    P3 -- "location" --> WeatherAPI
+    WeatherAPI -- "conditions" --> P3
+    P3 -- "read treatment/prevention data" --> D3
+    P3 -- "final result + PDF" --> Farmer
+    P3 -- "store report" --> D4
+
+    Farmer -- "history/search query" --> P4
+    P4 -- "read" --> D2
+    P4 -- "results, dashboard data" --> Farmer
+
+    Agronomist -- "create/edit KB entry" --> P5
+    P5 <--> D3
+    P5 -- "confirmation" --> Agronomist
+
+    Admin -- "user mgmt / analytics query" --> P6
+    P6 <--> D1
+    P6 -- "read (aggregate)" --> D2
+    P6 -- "system analytics, user records" --> Admin

@@ -1,0 +1,268 @@
+classDiagram
+    %% ===== DOMAIN LAYER (NFR-MAINT-1: framework-independent) =====
+    class User {
+        +UUID id
+        +string email
+        +string password_hash
+        +string full_name
+        +Role role
+        +bool is_active
+        +datetime created_at
+        +verify_password(plain) bool
+        +change_role(new_role) void
+    }
+    class Role {
+        <<enumeration>>
+        FARMER
+        AGRONOMIST
+        ADMIN
+    }
+
+    class Plant {
+        +UUID id
+        +string canonical_name
+        +string scientific_name
+        +List~string~ synonyms
+    }
+
+    class Disease {
+        +UUID id
+        +UUID plant_id
+        +string name
+        +string disease_type
+        +string description
+        +List~string~ symptoms
+        +List~string~ causes
+        +string transmission_method
+        +float recovery_probability
+        +string estimated_recovery_time
+        +bool has_recovery_data()
+    }
+
+    class Treatment {
+        +UUID id
+        +UUID disease_id
+        +TreatmentCategory category
+        +string instructions
+        +string safety_notes
+        +string source_citation
+        +bool is_dosage_verified()
+    }
+    class TreatmentCategory {
+        <<enumeration>>
+        ORGANIC
+        CHEMICAL
+        BIOLOGICAL
+    }
+
+    class Diagnosis {
+        +UUID id
+        +UUID user_id
+        +UUID plant_id
+        +UUID disease_id
+        +float confidence_score
+        +SeverityLevel severity
+        +float affected_area_pct
+        +float healthy_area_pct
+        +string roi_image_ref
+        +string heatmap_image_ref
+        +bool low_confidence_flag
+        +datetime diagnosed_at
+        +string location_lat
+        +string location_lon
+        +is_low_confidence() bool
+    }
+    class SeverityLevel {
+        <<enumeration>>
+        MILD
+        MODERATE
+        SEVERE
+    }
+
+    class PestDetection {
+        +UUID id
+        +UUID diagnosis_id
+        +string pest_name
+        +float confidence
+        +string bbox_json
+    }
+
+    class WeatherSnapshot {
+        +UUID id
+        +UUID diagnosis_id
+        +float temperature_c
+        +float humidity_pct
+        +float wind_speed_kmh
+        +float rain_probability_pct
+        +float uv_index
+        +datetime retrieved_at
+        +bool is_fresh(window_hours) bool
+    }
+
+    class Recommendation {
+        +UUID id
+        +UUID diagnosis_id
+        +string irrigation_advice
+        +string spraying_advice
+        +string fertilizer_advice
+    }
+
+    class Report {
+        +UUID id
+        +UUID diagnosis_id
+        +string file_ref
+        +string qr_code_ref
+        +datetime generated_at
+    }
+
+    %% ===== APPLICATION LAYER (use-case orchestrators) =====
+    class AuthService {
+        -IUserRepository userRepo
+        -IPasswordHasher hasher
+        -ITokenService tokenService
+        +register(email, password, name) User
+        +login(email, password) TokenPair
+        +refresh(refresh_token) TokenPair
+    }
+
+    class ScanOrchestrator {
+        -IImageValidator validator
+        -AIPipeline aiPipeline
+        -KnowledgeBaseService kbService
+        -WeatherService weatherService
+        -ReportGenerator reportGenerator
+        -IDiagnosisRepository diagnosisRepo
+        +process_scan(image, user) Diagnosis
+    }
+
+    class AIPipeline {
+        -PlantIdentifier plantIdentifier
+        -DiseaseClassifier diseaseClassifier
+        -PestDetector pestDetector
+        -RegionLocalizer localizer
+        -SeverityEstimator severityEstimator
+        -Explainer explainer
+        +diagnose(image) RawDiagnosis
+    }
+    class PlantIdentifier {
+        <<interface>>
+        +identify(image) SpeciesPrediction
+    }
+    class DiseaseClassifier {
+        <<interface>>
+        +classify(image, species) DiseasePrediction
+    }
+    class PestDetector {
+        <<interface>>
+        +detect(image) List~PestPrediction~
+    }
+    class RegionLocalizer {
+        <<interface>>
+        +localize(image, disease) BoundingRegion
+    }
+    class SeverityEstimator {
+        <<interface>>
+        +estimate(region_mask) SeverityResult
+    }
+    class Explainer {
+        <<interface>>
+        +explain(image, model, prediction) HeatmapImage
+    }
+
+    class KnowledgeBaseService {
+        -ITreatmentRepository treatmentRepo
+        -IDiseaseRepository diseaseRepo
+        +get_treatment(disease_id) List~Treatment~
+        +upsert_disease(entry, actor) Disease
+        +upsert_treatment(entry, actor) Treatment
+    }
+
+    class WeatherService {
+        -IWeatherClient client
+        -ICache cache
+        +get_conditions(lat, lon) WeatherSnapshot
+    }
+
+    class ReportGenerator {
+        -IPdfRenderer renderer
+        -IQrCodeGenerator qrGenerator
+        -IObjectStorage storage
+        +generate(diagnosis) Report
+    }
+
+    class DashboardService {
+        -IDiagnosisRepository diagnosisRepo
+        +get_summary(user_or_system_scope) DashboardSummary
+    }
+
+    %% ===== INFRASTRUCTURE LAYER (implements interfaces, Dependency Inversion) =====
+    class PostgresUserRepository {
+        +save(user) void
+        +find_by_email(email) User
+    }
+    class PostgresDiagnosisRepository
+    class PostgresTreatmentRepository
+    class PostgresDiseaseRepository
+    class RedisCache
+    class OpenWeatherClient
+    class ReportLabPdfRenderer
+    class S3CompatibleObjectStorage
+    class BcryptPasswordHasher
+    class JwtTokenService
+
+    class IUserRepository { <<interface>> }
+    class IDiagnosisRepository { <<interface>> }
+    class ITreatmentRepository { <<interface>> }
+    class IDiseaseRepository { <<interface>> }
+    class ICache { <<interface>> }
+    class IWeatherClient { <<interface>> }
+    class IPdfRenderer { <<interface>> }
+    class IObjectStorage { <<interface>> }
+    class IPasswordHasher { <<interface>> }
+    class ITokenService { <<interface>> }
+
+    %% ===== RELATIONSHIPS =====
+    User "1" --> "*" Diagnosis : owns
+    Plant "1" --> "*" Diagnosis : identified as
+    Disease "1" --> "*" Diagnosis : diagnosed as
+    Plant "1" --> "*" Disease : afflicted by
+    Disease "1" --> "*" Treatment : treated by
+    Diagnosis "1" --> "*" PestDetection
+    Diagnosis "1" --> "0..1" WeatherSnapshot
+    Diagnosis "1" --> "0..1" Recommendation
+    Diagnosis "1" --> "0..1" Report
+
+    AIPipeline --> PlantIdentifier
+    AIPipeline --> DiseaseClassifier
+    AIPipeline --> PestDetector
+    AIPipeline --> RegionLocalizer
+    AIPipeline --> SeverityEstimator
+    AIPipeline --> Explainer
+
+    ScanOrchestrator --> AIPipeline
+    ScanOrchestrator --> KnowledgeBaseService
+    ScanOrchestrator --> WeatherService
+    ScanOrchestrator --> ReportGenerator
+    ScanOrchestrator --> IDiagnosisRepository
+
+    AuthService --> IUserRepository
+    AuthService --> IPasswordHasher
+    AuthService --> ITokenService
+    KnowledgeBaseService --> ITreatmentRepository
+    KnowledgeBaseService --> IDiseaseRepository
+    WeatherService --> IWeatherClient
+    WeatherService --> ICache
+    ReportGenerator --> IPdfRenderer
+    ReportGenerator --> IObjectStorage
+    DashboardService --> IDiagnosisRepository
+
+    PostgresUserRepository ..|> IUserRepository
+    PostgresDiagnosisRepository ..|> IDiagnosisRepository
+    PostgresTreatmentRepository ..|> ITreatmentRepository
+    PostgresDiseaseRepository ..|> IDiseaseRepository
+    RedisCache ..|> ICache
+    OpenWeatherClient ..|> IWeatherClient
+    ReportLabPdfRenderer ..|> IPdfRenderer
+    S3CompatibleObjectStorage ..|> IObjectStorage
+    BcryptPasswordHasher ..|> IPasswordHasher
+    JwtTokenService ..|> ITokenService

@@ -1,0 +1,65 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TB
+    subgraph CLIENT["Client Devices"]
+        PHONE["Farmer's Smartphone\n(Mobile Browser)"]
+        DESKTOP["Admin Desktop Browser"]
+    end
+
+    subgraph CLOUD["Deployment Host (Docker Compose / Kubernetes)"]
+        subgraph EDGE_NODE["nginx-container"]
+            NGINX["NGINX\nTLS termination (NFR-SEC-1)\nReverse proxy + rate limiting (NFR-SEC-5)"]
+        end
+
+        subgraph FE_NODE["frontend-container(s)"]
+            FE["Static build\n(React SPA served via NGINX or CDN)"]
+        end
+
+        subgraph API_NODES["backend-container replicas (N, horizontally scaled — NFR-SCALE-1)"]
+            API1["FastAPI instance 1"]
+            API2["FastAPI instance 2"]
+            APIN["FastAPI instance N"]
+        end
+
+        subgraph AI_NODES["ai-inference-container replicas\n(independently scaled — NFR-SCALE-2)"]
+            AI1["Inference worker 1\n(GPU if available, else CPU — NFR-PORT-2)"]
+            AI2["Inference worker 2"]
+        end
+
+        subgraph DATA_NODES["Data Tier"]
+            PGNODE[("postgres-container\nPostgreSQL 16")]
+            REDISNODE[("redis-container\nRedis 7")]
+            OBJNODE[("object-storage-container\nMinIO / S3-compatible")]
+        end
+
+        subgraph OBS["Observability Sidecar"]
+            LOGS["Log Aggregator\n(stdout JSON logs — NFR-OBS-1)"]
+            HEALTH["Health Check Endpoint Consumer\n(NFR-OBS-2)"]
+        end
+    end
+
+    subgraph EXT["External Cloud Services"]
+        WAPI["Weather API Provider"]
+        SMTP["Email/SMTP Provider"]
+    end
+
+    PHONE -- "HTTPS" --> NGINX
+    DESKTOP -- "HTTPS" --> NGINX
+    NGINX --> FE
+    NGINX --> API1
+    NGINX --> API2
+    NGINX --> APIN
+
+    API1 --> PGNODE
+    API1 --> REDISNODE
+    API1 --> OBJNODE
+    API1 --> AI1
+    API2 --> AI2
+    API1 -.-> WAPI
+    API1 -.-> SMTP
+
+    API1 --> LOGS
+    API2 --> LOGS
+    AI1 --> LOGS
+    API1 --> HEALTH
+
+    note1["Training Service runs as a separate,\non-demand batch job (not a long-running\ncontainer in the request path) — invoked via\n`python train.py`, writing artifacts to\nobject-storage-container for the inference\nworkers to load."]

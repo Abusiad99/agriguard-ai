@@ -1,0 +1,30 @@
+# Never bake user datasets, secrets, or local artifacts into any image (C8).
+datasets/
+artifacts/
+.cache/
+logs/
+storage/
+.env
+.env.*
+!.env.example
+
+# VCS / editor
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+.mypy_cache/
+
+# Docs (not needed inside images)
+docs/
+
+# Frontend (built separately in its own image context — Phase 4)
+frontend/node_modules/
+frontend/dist/

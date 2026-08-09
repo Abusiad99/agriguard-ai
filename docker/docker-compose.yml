@@ -1,0 +1,163 @@
+x-backend-common: &backend-common
+  build:
+    context: ..
+    dockerfile: docker/backend.Dockerfile
+  environment:
+    DATABASE_URL: postgresql+psycopg2://agriguard:${POSTGRES_PASSWORD:-agriguard}@postgres:5432/agriguard
+    REDIS_URL: redis://redis:6379/0
+    JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set — see .env.example}
+    APP_ENV: ${APP_ENV:-production}
+    DEBUG: ${DEBUG:-false}
+    LOCAL_STORAGE_DIR: /app/storage
+    AI_ARTIFACTS_DIR: /app/artifacts
+    LOG_DIR: /app/logs
+    CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-["http://localhost"]}
+    WEATHER_API_BASE_URL: ${WEATHER_API_BASE_URL:-https://api.open-meteo.com/v1/forecast}
+  volumes:
+    - storage_data:/app/storage
+    - artifacts_data:/app/artifacts
+    - logs_data:/app/logs
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  networks:
+    - agriguard_network
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agriguard_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agriguard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agriguard}
+      POSTGRES_DB: agriguard
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agriguard -d agriguard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - agriguard_network
+    ports:
+      - "5432:5432"  # exposed for local dev inspection; remove in production
+
+  redis:
+    image: redis:7-alpine
+    container_name: agriguard_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - agriguard_network
+
+  backend:
+    <<: *backend-common
+    container_name: agriguard_backend
+    restart: unless-stopped
+    # Alembic migrations run automatically at container start via
+    # docker/scripts/backend-entrypoint.sh (database migration startup strategy).
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    ports:
+      - "8000:8000"  # exposed for local dev direct access; NGINX is the production entrypoint
+
+  # --- Frontend: a one-shot build container. It compiles the React/Vite app and
+  #     copies the static output into the shared `frontend_dist` volume, which
+  #     `nginx` mounts read-only and serves directly — there is no long-running
+  #     Node.js process in production (see docker/frontend.Dockerfile's header).
+  #     `restart: "no"` + exit-0 on success is intentional: this is a build step,
+  #     not a service.
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+    container_name: agriguard_frontend_build
+    restart: "no"
+    volumes:
+      - frontend_dist:/output
+    networks:
+      - agriguard_network
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: agriguard_nginx
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - frontend_dist:/usr/share/nginx/html:ro
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_completed_successfully
+    networks:
+      - agriguard_network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --- Training service: on-demand batch job, NOT part of the default `docker
+  #     compose up` stack (see docker/training.Dockerfile's header comment and
+  #     docs/02-system-design/11-deployment-diagram.mermaid). Run explicitly with:
+  #       docker compose --profile training run --rm training
+  training:
+    build:
+      context: ..
+      dockerfile: docker/training.Dockerfile
+    container_name: agriguard_training
+    profiles: ["training"]
+    environment:
+      AGRIGUARD_DEVICE: ${AGRIGUARD_DEVICE:-auto}
+      AGRIGUARD_ARCHITECTURE: ${AGRIGUARD_ARCHITECTURE:-efficientnet_b0}
+      AGRIGUARD_BATCH_SIZE: ${AGRIGUARD_BATCH_SIZE:-32}
+      AGRIGUARD_NUM_EPOCHS: ${AGRIGUARD_NUM_EPOCHS:-25}
+    volumes:
+      - ../datasets:/app/datasets:ro
+      - artifacts_data:/app/artifacts
+      - training_logs:/app/logs
+      - training_cache:/app/.cache
+    networks:
+      - agriguard_network
+    # Uncomment to enable GPU access (requires nvidia-container-toolkit on the host):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+networks:
+  agriguard_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:
+  artifacts_data:
+  logs_data:
+  training_logs:
+  training_cache:
+  frontend_dist:

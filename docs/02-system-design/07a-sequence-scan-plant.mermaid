@@ -1,0 +1,61 @@
+sequenceDiagram
+    autonumber
+    actor U as Farmer
+    participant FE as Frontend (React)
+    participant API as Backend API (FastAPI)
+    participant VAL as Image Validator
+    participant AI as AI Pipeline Service
+    participant KB as Knowledge Base Service
+    participant WX as Weather Service
+    participant WAPI as Weather API (external)
+    participant RPT as Report Generator
+    participant DB as PostgreSQL
+    participant CACHE as Redis
+
+    U->>FE: Capture/upload image
+    FE->>API: POST /api/v1/scans (multipart image, JWT)
+    API->>API: Verify JWT (NFR-SEC-3)
+    API->>VAL: validate(image)
+    VAL-->>API: OK / rejected (FR-SCAN-2)
+    alt invalid image
+        API-->>FE: 422 Invalid image
+        FE-->>U: Show error
+    else valid image
+        API->>API: Strip EXIF GPS unless opted-in (FR-SCAN-3)
+        API->>AI: diagnose(image)
+        AI->>AI: Step1 identify_plant()
+        alt low species confidence
+            AI-->>API: unrecognized_plant result
+            API-->>FE: 200 { status: "unrecognized_plant" }
+            FE-->>U: Show "unrecognized plant"
+        else species recognized
+            AI->>AI: Step2 classify_disease()
+            AI->>AI: Step3 detect_pests()
+            AI->>AI: Step4 localize_region()
+            AI->>AI: Step5 estimate_severity()
+            AI->>AI: Step6 compute_confidence()
+            AI->>AI: Step7 generate_explainability()
+            AI->>KB: get_treatment(disease_id)
+            KB->>DB: SELECT treatments WHERE disease_id=...
+            DB-->>KB: treatment rows
+            KB-->>AI: treatment + prevention data
+            AI-->>API: raw_diagnosis
+            API->>WX: get_conditions(user_location)
+            WX->>CACHE: check cached weather (freshness window)
+            alt cache hit (fresh)
+                CACHE-->>WX: cached conditions
+            else cache miss/stale
+                WX->>WAPI: GET /weather?lat&lon
+                WAPI-->>WX: temp, humidity, wind, rain%, UV
+                WX->>CACHE: store with TTL
+            end
+            WX-->>API: conditions (or null on failure, NFR-AVAIL-2)
+            API->>API: build agricultural recommendation (Step10)
+            API->>RPT: generate_pdf(diagnosis, weather, treatment)
+            RPT-->>API: report_url + qr_code
+            API->>DB: INSERT INTO diagnoses (...) [immutable, BR2]
+            DB-->>API: diagnosis_id
+            API-->>FE: 201 { diagnosis, report_url }
+            FE-->>U: Display Results Page
+        end
+    end

@@ -1,0 +1,32 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart LR
+    subgraph External["External Entities"]
+        Farmer(("Farmer"))
+        Agronomist(("Agronomist"))
+        Admin(("Admin"))
+        WeatherAPI(("Weather API"))
+    end
+
+    P0(["0.0\nAgriGuard AI System"])
+
+    DS1[("D1: Users")]
+    DS2[("D2: Diagnoses")]
+    DS3[("D3: Knowledge Base\n(Diseases/Treatments)")]
+    DS4[("D4: Reports")]
+
+    Farmer -- "Registration data, image, search/filter queries" --> P0
+    P0 -- "Diagnosis results, PDF report,\nhistory, dashboard" --> Farmer
+
+    Agronomist -- "KB create/edit requests" --> P0
+    P0 -- "KB confirmations" --> Agronomist
+
+    Admin -- "User mgmt commands,\nanalytics queries" --> P0
+    P0 -- "User records, system analytics" --> Admin
+
+    P0 -- "Location + request" --> WeatherAPI
+    WeatherAPI -- "Weather conditions" --> P0
+
+    P0 <--> DS1
+    P0 <--> DS2
+    P0 <--> DS3
+    P0 <--> DS4

@@ -1,0 +1,23 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TB
+    Farmer["Farmer\n(FR-SCAN, FR-HIST, FR-DASH)"]
+    Agronomist["Agronomist\n(FR-ADMIN-2/3)"]
+    Admin["Admin\n(FR-ADMIN-1/4)"]
+    Weather["Weather API\n(external system)"]
+    Email["Email/SMTP Provider\n(external system)"]
+
+    System(["AgriGuard AI System\n— identifies plants, diagnoses disease/pests,\nrecommends treatment, generates reports —"])
+
+    Farmer -- "Image upload / capture, view results,\nhistory, dashboard" --> System
+    System -- "Diagnosis, treatment advice,\nPDF report, dashboard data" --> Farmer
+
+    Agronomist -- "Create/edit knowledge base entries" --> System
+    System -- "KB confirmation, analytics" --> Agronomist
+
+    Admin -- "Manage users, view analytics" --> System
+    System -- "User/report data" --> Admin
+
+    System -- "Location + request for conditions" --> Weather
+    Weather -- "Temperature, humidity, wind,\nrain probability, UV index" --> System
+
+    System -- "Password reset / notification emails" --> Email

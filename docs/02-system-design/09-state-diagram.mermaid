@@ -1,0 +1,41 @@
+stateDiagram-v2
+    [*] --> ImageReceived : user submits image
+
+    ImageReceived --> Validating
+    Validating --> Rejected : invalid image (FR-SCAN-2)
+    Rejected --> [*]
+
+    Validating --> IdentifyingSpecies : validated
+
+    IdentifyingSpecies --> UnrecognizedPlant : confidence < threshold (FR-AI-12)
+    UnrecognizedPlant --> [*]
+
+    IdentifyingSpecies --> ClassifyingDisease : species recognized
+
+    ClassifyingDisease --> DetectingPests
+    DetectingPests --> LocalizingRegion
+    LocalizingRegion --> EstimatingSeverity
+    EstimatingSeverity --> ScoringConfidence
+
+    ScoringConfidence --> LowConfidenceFlagged : confidence < threshold (BR1)
+    ScoringConfidence --> HighConfidence : confidence ≥ threshold
+
+    LowConfidenceFlagged --> GeneratingExplainability
+    HighConfidence --> GeneratingExplainability
+
+    GeneratingExplainability --> RetrievingTreatment
+    RetrievingTreatment --> FetchingWeather
+
+    FetchingWeather --> WeatherUnavailable : timeout/error (NFR-AVAIL-2)
+    FetchingWeather --> WeatherAvailable : success
+
+    WeatherUnavailable --> GeneratingRecommendation : weather fields omitted (BR7)
+    WeatherAvailable --> GeneratingRecommendation
+
+    GeneratingRecommendation --> GeneratingReport
+    GeneratingReport --> Persisted : saved immutably (BR2, NFR-DATA-1)
+    Persisted --> Completed
+    Completed --> [*]
+
+    Completed --> Superseded : agronomist issues correction\n(creates new linked record,\noriginal remains immutable)
+    Superseded --> [*]

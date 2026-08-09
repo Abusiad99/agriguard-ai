@@ -1,0 +1,41 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant FE as Frontend
+    participant API as Backend API
+    participant AUTH as Auth Service
+    participant DB as PostgreSQL
+    participant CACHE as Redis (refresh token store)
+
+    U->>FE: Submit email + password
+    FE->>API: POST /api/v1/auth/login
+    API->>AUTH: authenticate(email, password)
+    AUTH->>DB: SELECT user WHERE email=...
+    DB-->>AUTH: user row (hashed password)
+    AUTH->>AUTH: verify_hash(password, stored_hash)
+    alt invalid credentials
+        AUTH-->>API: AuthenticationError
+        API-->>FE: 401 { error: "invalid email or password" }
+        FE-->>U: Show generic error (no user enumeration)
+    else valid credentials
+        AUTH->>AUTH: generate JWT access token (short TTL)
+        AUTH->>AUTH: generate refresh token (long TTL)
+        AUTH->>CACHE: store refresh token (userId, tokenId)
+        AUTH-->>API: {access_token, refresh_token}
+        API-->>FE: 200 {access_token, refresh_token, role}
+        FE->>FE: store tokens (memory / secure storage)
+        FE-->>U: Redirect to Home
+    end
+
+    Note over FE,API: Later — access token expires
+    FE->>API: POST /api/v1/auth/refresh (refresh_token)
+    API->>AUTH: rotate(refresh_token)
+    AUTH->>CACHE: validate token exists & not revoked
+    alt token invalid/revoked
+        AUTH-->>API: Unauthorized
+        API-->>FE: 401 → force re-login
+    else token valid
+        AUTH->>CACHE: revoke old token, store new token (rotation)
+        AUTH-->>API: new {access_token, refresh_token}
+        API-->>FE: 200 new tokens
+    end

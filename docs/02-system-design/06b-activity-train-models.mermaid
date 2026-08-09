@@ -1,0 +1,20 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TD
+    Start(["Start: operator runs\n`python train.py`"]) --> A1["Scan datasets/ directory\n(FR-DATA-1)"]
+    A1 --> D1{"Any recognizable\nimage data found?"}
+    D1 -- "No" --> E1["Fail fast with actionable\nerror message (C2)"] --> End1(["End"])
+    D1 -- "Yes" --> A2["Fingerprint each dataset's\nstructure, select adapter"]
+    A2 --> A3["Parse labels via adapter chain\n(folder/filename/CSV/JSON/XML)"]
+    A3 --> A4["Normalize labels to canonical\n'{plant}___{condition}' schema\n(FR-DATA-2)"]
+    A4 --> A5["Merge into unified index"]
+    A5 --> A6["Remove exact + near-duplicate\nimages (perceptual hash, FR-DATA-3)"]
+    A6 --> A7["Stratified split:\nTrain / Val / Test (FR-DATA-4)"]
+    A7 --> A8["Compute class weights /\nweighted sampler (FR-DATA-6)"]
+    A8 --> A9["Apply augmentation to\nTRAIN split only (FR-DATA-5)"]
+    A9 --> A10["Build model(s) per task\n(plant ID, disease cls,\npest detection, localization)"]
+    A10 --> A11["Train with early stopping,\nlog per-epoch metrics"]
+    A11 --> A12["Evaluate on Validation split"]
+    A12 --> A13["Evaluate on Test split:\naccuracy, precision, recall, F1"]
+    A13 --> A14["Generate confusion matrix\n& training curve images"]
+    A14 --> A15["Persist: weights, label encoder,\npreprocessing params, metrics\n(FR-DATA-8) to timestamped run dir"]
+    A15 --> End2(["End: models ready\nfor inference service"])

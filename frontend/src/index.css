@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+html[dir="rtl"] body {
+  font-family: "IBM Plex Sans Arabic", "IBM Plex Sans", ui-sans-serif, sans-serif;
+}
+
+/* Visible keyboard focus everywhere (accessibility floor, never removed). */
+:focus-visible {
+  outline: 2px solid #2f6b4f;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+::selection {
+  background-color: #dceae1;
+  color: #1c2b22;
+}
+
+.font-tabular {
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,84 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TB
+    subgraph FE_LAYER["Frontend Layer (React + TS + Tailwind + Vite)"]
+        FE_APP["Farmer Web App"]
+        FE_ADMIN["Admin Panel"]
+        FE_SHARED["Shared UI Kit\n(i18n en/ar, RTL support)"]
+    end
+
+    subgraph EDGE["Edge"]
+        NGINX["NGINX\n(TLS termination, reverse proxy,\nstatic asset serving, rate limiting)"]
+    end
+
+    subgraph API_LAYER["Backend API Layer (FastAPI)"]
+        AUTH_C["Auth Component\n(FR-AUTH)"]
+        SCAN_C["Scan/Orchestration Component\n(FR-SCAN, FR-AI)"]
+        KB_C["Knowledge Base Component\n(FR-TREAT, FR-ADMIN-2/3)"]
+        HIST_C["History/Dashboard Component\n(FR-HIST, FR-DASH)"]
+        ADMIN_C["Admin Component\n(FR-ADMIN-1/4)"]
+        REPORT_C["Report Component\n(FR-REPORT)"]
+        WEATHER_C["Weather Integration Component\n(FR-WEATHER)"]
+    end
+
+    subgraph AI_LAYER["AI Inference Service (separately scalable, NFR-SCALE-2)"]
+        PLANT_ID["Plant Identifier Model"]
+        DISEASE_CLS["Disease Classifier Model"]
+        PEST_DET["Pest Detector Model"]
+        LOCALIZER["Region Localizer Model"]
+        EXPLAINER["Explainability Module"]
+    end
+
+    subgraph TRAIN_LAYER["Training Service (offline/batch, UC-13)"]
+        INGEST["Dataset Ingestion & Adapter Chain"]
+        PREPROC["Preprocessing & Augmentation"]
+        TRAINER["Model Trainer"]
+        EVALUATOR["Evaluator & Artifact Writer"]
+    end
+
+    subgraph DATA_LAYER["Data Layer"]
+        PG[("PostgreSQL")]
+        REDIS[("Redis")]
+        OBJSTORE[("Object Storage\n(images, PDFs, model artifacts)")]
+    end
+
+    subgraph EXTERNAL["External Systems"]
+        WAPI["Weather API"]
+        SMTP["Email/SMTP"]
+    end
+
+    FE_APP --> NGINX
+    FE_ADMIN --> NGINX
+    NGINX --> AUTH_C
+    NGINX --> SCAN_C
+    NGINX --> KB_C
+    NGINX --> HIST_C
+    NGINX --> ADMIN_C
+    NGINX --> REPORT_C
+
+    SCAN_C --> PLANT_ID
+    SCAN_C --> DISEASE_CLS
+    SCAN_C --> PEST_DET
+    SCAN_C --> LOCALIZER
+    SCAN_C --> EXPLAINER
+    SCAN_C --> KB_C
+    SCAN_C --> WEATHER_C
+    SCAN_C --> REPORT_C
+
+    WEATHER_C --> WAPI
+    WEATHER_C --> REDIS
+    AUTH_C --> PG
+    AUTH_C --> REDIS
+    AUTH_C --> SMTP
+    SCAN_C --> PG
+    KB_C --> PG
+    HIST_C --> PG
+    ADMIN_C --> PG
+    REPORT_C --> OBJSTORE
+    REPORT_C --> PG
+
+    TRAIN_LAYER --> INGEST --> PREPROC --> TRAINER --> EVALUATOR
+    EVALUATOR -- "writes model weights,\nencoders, metrics" --> OBJSTORE
+    PLANT_ID -. "loads weights" .-> OBJSTORE
+    DISEASE_CLS -. "loads weights" .-> OBJSTORE
+    PEST_DET -. "loads weights" .-> OBJSTORE
+    LOCALIZER -. "loads weights" .-> OBJSTORE

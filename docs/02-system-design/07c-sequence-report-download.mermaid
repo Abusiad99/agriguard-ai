@@ -1,0 +1,30 @@
+sequenceDiagram
+    autonumber
+    actor U as Farmer
+    participant FE as Frontend
+    participant API as Backend API
+    participant DB as PostgreSQL
+    participant STORE as Object Storage\n(report files)
+    participant RPT as Report Generator
+
+    U->>FE: Tap "Download Report"
+    FE->>API: GET /api/v1/reports/{diagnosis_id}
+    API->>API: Verify JWT & ownership\n(user_id matches diagnosis.user_id\nOR requester is admin)
+    alt not owner and not admin
+        API-->>FE: 403 Forbidden
+    else authorized
+        API->>DB: SELECT report WHERE diagnosis_id=...
+        DB-->>API: report row (file_ref, generated_at)
+        alt report file exists in storage
+            API->>STORE: fetch(file_ref)
+            STORE-->>API: PDF bytes
+        else report missing/expired
+            API->>DB: SELECT diagnosis + treatment + weather snapshot
+            DB-->>API: full diagnosis data
+            API->>RPT: generate_pdf(data) [BR5: only for completed diagnosis]
+            RPT-->>API: PDF bytes + qr_code
+            API->>STORE: save(file_ref, PDF bytes)
+        end
+        API-->>FE: 200 application/pdf (stream)
+        FE-->>U: Browser downloads/opens PDF
+    end

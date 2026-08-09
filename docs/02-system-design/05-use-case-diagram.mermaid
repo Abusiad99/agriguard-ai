@@ -1,0 +1,45 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart LR
+    Farmer(("Farmer"))
+    Agronomist(("Agronomist"))
+    Admin(("Admin"))
+    Dev(("Developer/Operator"))
+
+    subgraph SYS["AgriGuard AI"]
+        UC1(["UC-01 Register Account"])
+        UC2(["UC-02 Log In"])
+        UC3(["UC-03 Scan Plant"])
+        UC4(["UC-04 View Results"])
+        UC5(["UC-05 Download PDF Report"])
+        UC6(["UC-06 View & Search History"])
+        UC7(["UC-07 Compare Scans"])
+        UC8(["UC-08 View Dashboard"])
+        UC9(["UC-09 Manage Disease KB"])
+        UC10(["UC-10 Manage Treatments"])
+        UC11(["UC-11 Manage Users"])
+        UC12(["UC-12 View System Analytics"])
+        UC13(["UC-13 Train AI Models"])
+    end
+
+    Farmer --> UC1
+    Farmer --> UC2
+    Farmer --> UC3
+    UC3 -.include.-> UC4
+    UC4 -.include.-> UC5
+    Farmer --> UC6
+    UC6 -.extend.-> UC7
+    Farmer --> UC8
+
+    Agronomist --> UC2
+    Agronomist --> UC9
+    Agronomist --> UC10
+    Agronomist --> UC8
+
+    Admin --> UC2
+    Admin --> UC11
+    Admin --> UC12
+    Admin --> UC8
+    Admin --> UC9
+    Admin --> UC10
+
+    Dev --> UC13

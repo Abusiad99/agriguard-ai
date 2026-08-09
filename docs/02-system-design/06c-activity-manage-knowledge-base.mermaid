@@ -1,0 +1,17 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TD
+    Start(["Start"]) --> A1["Agronomist/Admin opens\nAdmin Panel → Manage Diseases\nor Manage Treatments"]
+    A1 --> A2["Select: Create New / Edit Existing"]
+    A2 --> A3["Fill fields\n(description, symptoms, causes,\ntransmission, severity mapping,\nor treatment + dosage + source_citation)"]
+    A3 --> A4["Submit"]
+    A4 --> D1{"Required fields\nvalid?"}
+    D1 -- "No" --> E1["Show validation error"] --> A3
+    D1 -- "Yes" --> D2{"Is this a chemical\ntreatment entry?"}
+    D2 -- "Yes" --> D3{"source_citation\nprovided? (BR6)"}
+    D3 -- "No" --> D4{"Marked as\n'authority-referral-only'?"}
+    D4 -- "No" --> E2["Reject: dosage requires\nsource_citation"] --> A3
+    D4 -- "Yes" --> A5
+    D3 -- "Yes" --> A5["Persist as new version\n(append-only, NFR-DATA-1)"]
+    D2 -- "No" --> A5
+    A5 --> A6["Show confirmation"]
+    A6 --> End(["End"])

@@ -1,0 +1,33 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TD
+    Start(["Start"]) --> A1["User opens Scan Plant"]
+    A1 --> A2["Capture photo OR upload image"]
+    A2 --> A3["Client-side basic validation\n(file type/size)"]
+    A3 --> A4["Upload to backend"]
+    A4 --> A5["Server validates image\n(content-sniffing, FR-SCAN-2)"]
+    A5 --> D1{"Valid image?"}
+    D1 -- "No" --> E1["Return error to user"] --> End1(["End"])
+    D1 -- "Yes" --> A6["Strip EXIF GPS unless opted in\n(FR-SCAN-3)"]
+    A6 --> A7["Submit to AI Pipeline"]
+    A7 --> A8["Step 1: Identify plant species"]
+    A8 --> D2{"Species confidence\n≥ threshold?"}
+    D2 -- "No" --> E2["Return 'Unrecognized Plant' result"] --> End2(["End"])
+    D2 -- "Yes" --> A9["Step 2: Classify disease"]
+    A9 --> A10["Step 3: Detect pests"]
+    A10 --> A11["Step 4: Localize affected region"]
+    A11 --> A12["Step 5: Estimate severity"]
+    A12 --> A13["Step 6: Compute confidence score"]
+    A13 --> D3{"Confidence ≥\nthreshold? (BR1)"}
+    D3 -- "No" --> A14["Flag: Low Confidence —\nRecommend Manual Expert Review"]
+    D3 -- "Yes" --> A15["Step 7: Generate explainability heatmap"]
+    A14 --> A15
+    A15 --> A16["Step 8: Retrieve treatment\nrecommendation from KB"]
+    A16 --> A17["Step 9: Call Weather API"]
+    A17 --> D4{"Weather data\nfresh & available?"}
+    D4 -- "No" --> A18["Omit weather-derived\nrecommendation (BR7)"]
+    D4 -- "Yes" --> A19["Step 10: Generate weather-aware\nagricultural recommendation"]
+    A18 --> A20
+    A19 --> A20["Step 11: Generate PDF report"]
+    A20 --> A21["Persist diagnosis to history\n(BR2, immutable)"]
+    A21 --> A22["Display Results Page"]
+    A22 --> End3(["End"])

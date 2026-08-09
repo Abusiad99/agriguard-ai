@@ -1,0 +1,145 @@
+erDiagram
+    USERS ||--o{ DIAGNOSES : "makes"
+    USERS ||--o{ REFRESH_TOKENS : "has"
+    USERS ||--o{ AUDIT_LOGS : "performs"
+
+    PLANTS ||--o{ DISEASES : "afflicted_by"
+    PLANTS ||--o{ DIAGNOSES : "identified_as"
+
+    DISEASES ||--o{ TREATMENTS : "treated_by"
+    DISEASES ||--o{ DIAGNOSES : "diagnosed_as"
+
+    DIAGNOSES ||--o{ PEST_DETECTIONS : "includes"
+    DIAGNOSES |o--o| WEATHER_SNAPSHOTS : "captured_with"
+    DIAGNOSES |o--o| RECOMMENDATIONS : "produces"
+    DIAGNOSES |o--o| REPORTS : "generates"
+    DIAGNOSES |o--o| DIAGNOSES : "corrected_by (self-ref)"
+
+    TREATMENTS }o--|| TREATMENT_CATEGORIES : "categorized_as"
+
+    USERS {
+        uuid id PK
+        varchar email UK
+        varchar password_hash
+        varchar full_name
+        varchar role
+        boolean is_active
+        varchar preferred_locale
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    REFRESH_TOKENS {
+        uuid id PK
+        uuid user_id FK
+        varchar token_hash UK
+        boolean revoked
+        timestamptz expires_at
+        timestamptz created_at
+    }
+
+    PLANTS {
+        uuid id PK
+        varchar canonical_name UK
+        varchar scientific_name
+        text synonyms_json
+        timestamptz created_at
+    }
+
+    DISEASES {
+        uuid id PK
+        uuid plant_id FK
+        varchar name
+        varchar disease_type
+        text description
+        text symptoms_json
+        text causes_json
+        varchar transmission_method
+        numeric recovery_probability "nullable"
+        varchar estimated_recovery_time "nullable"
+        int version
+        boolean is_current
+        timestamptz created_at
+    }
+
+    TREATMENT_CATEGORIES {
+        varchar code PK
+        varchar label
+    }
+
+    TREATMENTS {
+        uuid id PK
+        uuid disease_id FK
+        varchar category_code FK
+        text instructions
+        text safety_notes
+        varchar source_citation "nullable"
+        boolean authority_referral_only
+        int version
+        boolean is_current
+        timestamptz created_at
+    }
+
+    DIAGNOSES {
+        uuid id PK
+        uuid user_id FK
+        uuid plant_id FK
+        uuid disease_id FK "nullable if unrecognized"
+        numeric confidence_score
+        varchar severity_level "nullable"
+        numeric affected_area_pct "nullable"
+        numeric healthy_area_pct "nullable"
+        varchar roi_image_ref
+        varchar heatmap_image_ref "nullable"
+        boolean low_confidence_flag
+        boolean unrecognized_plant
+        numeric location_lat "nullable"
+        numeric location_lon "nullable"
+        uuid supersedes_diagnosis_id FK "nullable, self-ref"
+        timestamptz diagnosed_at
+    }
+
+    PEST_DETECTIONS {
+        uuid id PK
+        uuid diagnosis_id FK
+        varchar pest_name
+        numeric confidence
+        text bbox_json
+    }
+
+    WEATHER_SNAPSHOTS {
+        uuid id PK
+        uuid diagnosis_id FK
+        numeric temperature_c
+        numeric humidity_pct
+        numeric wind_speed_kmh
+        numeric rain_probability_pct
+        numeric uv_index
+        timestamptz retrieved_at
+    }
+
+    RECOMMENDATIONS {
+        uuid id PK
+        uuid diagnosis_id FK
+        text irrigation_advice "nullable"
+        text spraying_advice "nullable"
+        text fertilizer_advice "nullable"
+    }
+
+    REPORTS {
+        uuid id PK
+        uuid diagnosis_id FK UK
+        varchar file_ref
+        varchar qr_code_ref
+        timestamptz generated_at
+    }
+
+    AUDIT_LOGS {
+        uuid id PK
+        uuid actor_user_id FK
+        varchar action
+        varchar entity_type
+        uuid entity_id
+        text metadata_json
+        timestamptz created_at
+    }
