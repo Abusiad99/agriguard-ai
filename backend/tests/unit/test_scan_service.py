@@ -50,12 +50,14 @@ def mocks():
     weather_service = MagicMock()
     weather_service.get_conditions.return_value = None  # simulate weather unavailable
     pdf_generator = MagicMock()
+    gemini_service = MagicMock()
+    gemini_service.analyze.return_value = None  # simulate Gemini disabled by default
 
     return {
         "storage": storage, "ai_client": ai_client, "plant_repo": plant_repo,
         "disease_repo": disease_repo, "treatment_repo": treatment_repo,
         "diagnosis_repo": diagnosis_repo, "weather_service": weather_service,
-        "pdf_generator": pdf_generator,
+        "pdf_generator": pdf_generator, "gemini_service": gemini_service,
     }
 
 
@@ -144,3 +146,106 @@ class TestWeatherDegradation:
             latitude=31.6, longitude=-7.9,
         )
         assert result.status == "completed"
+
+
+class TestGeminiIntegrationInScanFlow:
+    """Requirement #8 (Error Handling) and #6 (existing flow integration):
+    ScanOrchestrator must complete the CV diagnosis identically regardless of
+    what the Gemini reasoning layer does — success, failure, disabled, or an
+    unexpected exception from the service layer itself."""
+
+    def _fake_ai_output(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeOutput:
+            unrecognized_plant: bool = False
+            plant: str = "tomato"
+            condition: str = "early_blight"
+            confidence_score: float = 91.0
+            low_confidence_flag: bool = False
+            severity_level: str = "moderate"
+            affected_area_pct: float = 28.0
+            healthy_area_pct: float = 72.0
+
+        return FakeOutput()
+
+    def test_scan_completes_when_gemini_disabled(self, orchestrator, mocks):
+        """gemini_service.analyze() returning None simulates GEMINI_API_KEY unset —
+        the diagnosis must persist exactly as if Gemini didn't exist."""
+        mocks["ai_client"].diagnose.return_value = self._fake_ai_output()
+        mocks["gemini_service"].analyze.return_value = None
+        mocks["diagnosis_repo"].create.return_value = MagicMock(id=uuid.uuid4())
+        mocks["diagnosis_repo"].get_by_id.return_value = MagicMock(id=uuid.uuid4())
+
+        result = orchestrator.process_scan(
+            user_id=uuid.uuid4(), image_bytes=_make_test_image_bytes(), content_type="image/jpeg",
+        )
+        assert result.status == "completed"
+        created_diagnosis = mocks["diagnosis_repo"].create.call_args[0][0]
+        assert created_diagnosis.ai_analysis is None
+
+    def test_scan_completes_and_persists_ai_analysis_on_gemini_success(self, orchestrator, mocks):
+        from app.domain.entities.diagnosis import AiAnalysis
+
+        mocks["ai_client"].diagnose.return_value = self._fake_ai_output()
+        mocks["gemini_service"].analyze.return_value = AiAnalysis(
+            id=None, diagnosis_id=None, status="ok",
+            diagnosis_explanation="Leaf spots consistent with early blight.",
+            observed_symptoms=["dark concentric spots", "yellowing margins"],
+            cv_consistency="consistent", confidence_assessment="High confidence, well supported.",
+            severity_explanation="Moderate coverage across the lower canopy.",
+            treatment_guidance=["Apply the organic treatment on file."],
+            prevention_guidance=["Rotate crops next season."],
+            environmental_risk="Elevated humidity increases spread risk.",
+            urgency="medium", model_name="gemini-2.5-flash",
+        )
+        mocks["diagnosis_repo"].create.return_value = MagicMock(id=uuid.uuid4())
+        mocks["diagnosis_repo"].get_by_id.return_value = MagicMock(id=uuid.uuid4())
+
+        result = orchestrator.process_scan(
+            user_id=uuid.uuid4(), image_bytes=_make_test_image_bytes(), content_type="image/jpeg",
+        )
+        assert result.status == "completed"
+        created_diagnosis = mocks["diagnosis_repo"].create.call_args[0][0]
+        assert created_diagnosis.ai_analysis is not None
+        assert created_diagnosis.ai_analysis.status == "ok"
+        assert created_diagnosis.ai_analysis.cv_consistency == "consistent"
+
+    def test_scan_completes_when_gemini_reports_unavailable(self, orchestrator, mocks):
+        """gemini_service.analyze() returning an AiAnalysis(status="unavailable")
+        simulates a Gemini attempt that failed (timeout/network/invalid response) —
+        the CV diagnosis must still persist and complete successfully."""
+        from app.domain.entities.diagnosis import AiAnalysis
+
+        mocks["ai_client"].diagnose.return_value = self._fake_ai_output()
+        mocks["gemini_service"].analyze.return_value = AiAnalysis(
+            id=None, diagnosis_id=None, status="unavailable",
+            message="AI analysis temporarily unavailable.",
+        )
+        mocks["diagnosis_repo"].create.return_value = MagicMock(id=uuid.uuid4())
+        mocks["diagnosis_repo"].get_by_id.return_value = MagicMock(id=uuid.uuid4())
+
+        result = orchestrator.process_scan(
+            user_id=uuid.uuid4(), image_bytes=_make_test_image_bytes(), content_type="image/jpeg",
+        )
+        assert result.status == "completed"
+        created_diagnosis = mocks["diagnosis_repo"].create.call_args[0][0]
+        assert created_diagnosis.ai_analysis.status == "unavailable"
+
+    def test_scan_completes_when_gemini_service_raises_unexpectedly(self, orchestrator, mocks):
+        """Even if GeminiAnalysisService itself has a bug and raises (rather than
+        returning a status), ScanOrchestrator's own defensive try/except around
+        the Gemini step (_run_gemini_analysis) must swallow it — the CV diagnosis
+        is never allowed to fail because of the Gemini layer."""
+        mocks["ai_client"].diagnose.return_value = self._fake_ai_output()
+        mocks["gemini_service"].analyze.side_effect = RuntimeError("boom")
+        mocks["diagnosis_repo"].create.return_value = MagicMock(id=uuid.uuid4())
+        mocks["diagnosis_repo"].get_by_id.return_value = MagicMock(id=uuid.uuid4())
+
+        result = orchestrator.process_scan(
+            user_id=uuid.uuid4(), image_bytes=_make_test_image_bytes(), content_type="image/jpeg",
+        )
+        assert result.status == "completed"
+        created_diagnosis = mocks["diagnosis_repo"].create.call_args[0][0]
+        assert created_diagnosis.ai_analysis is None

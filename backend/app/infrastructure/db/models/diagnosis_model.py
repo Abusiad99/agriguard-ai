@@ -39,6 +39,7 @@ class DiagnosisModel(Base):
     weather_snapshot = relationship("WeatherSnapshotModel", back_populates="diagnosis", uselist=False, cascade="all, delete-orphan")
     recommendation = relationship("RecommendationModel", back_populates="diagnosis", uselist=False, cascade="all, delete-orphan")
     report = relationship("ReportModel", back_populates="diagnosis", uselist=False, cascade="all, delete-orphan")
+    ai_analysis = relationship("AiAnalysisModel", back_populates="diagnosis", uselist=False, cascade="all, delete-orphan")
 
 
 class PestDetectionModel(Base):
@@ -78,6 +79,34 @@ class RecommendationModel(Base):
     fertilizer_advice: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     diagnosis = relationship("DiagnosisModel", back_populates="recommendation")
+
+
+class AiAnalysisModel(Base):
+    """Gemini multimodal reasoning-layer output — additive/optional, 1:1 with a
+    diagnosis, same cascade-delete shape as WeatherSnapshotModel/RecommendationModel
+    above. `status='unavailable'` rows are still persisted (with `message` set) so
+    the history UI can show that an analysis was attempted and failed, rather than
+    looking identical to a diagnosis that never had Gemini enabled at all — but a
+    disabled (no GEMINI_API_KEY) scan never creates a row here at all."""
+    __tablename__ = "ai_analyses"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    diagnosis_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("diagnoses.id", ondelete="CASCADE"), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)  # "ok" | "unavailable"
+    diagnosis_explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    observed_symptoms_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    cv_consistency: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    confidence_assessment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    severity_explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    treatment_guidance_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    prevention_guidance_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    environmental_risk: Mapped[str | None] = mapped_column(Text, nullable=True)
+    urgency: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    model_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    diagnosis = relationship("DiagnosisModel", back_populates="ai_analysis")
 
 
 class ReportModel(Base):

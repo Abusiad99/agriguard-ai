@@ -49,6 +49,32 @@ class Recommendation:
 
 
 @dataclass
+class AiAnalysis:
+    """Gemini multimodal reasoning-layer output for one diagnosis (see
+    infrastructure/external/gemini_client.py and
+    application/services/gemini_analysis_service.py). Always optional and
+    additive — a Diagnosis is fully valid and complete without one; this only
+    ever supplements the CV model's diagnosis, never replaces it (see
+    docs/GEMINI_INTEGRATION.md)."""
+
+    id: Optional[UUID]
+    diagnosis_id: UUID
+    status: str  # "ok" | "unavailable" — never persisted for "disabled" (nothing to store)
+    diagnosis_explanation: Optional[str] = None
+    observed_symptoms: List[str] = field(default_factory=list)
+    cv_consistency: Optional[str] = None
+    confidence_assessment: Optional[str] = None
+    severity_explanation: Optional[str] = None
+    treatment_guidance: List[str] = field(default_factory=list)
+    prevention_guidance: List[str] = field(default_factory=list)
+    environmental_risk: Optional[str] = None
+    urgency: Optional[str] = None
+    model_name: Optional[str] = None
+    message: Optional[str] = None
+    generated_at: Optional[datetime] = None
+
+
+@dataclass
 class Report:
     id: Optional[UUID]
     diagnosis_id: UUID
@@ -81,6 +107,7 @@ class Diagnosis:
     weather_snapshot: Optional[WeatherSnapshot] = None
     recommendation: Optional[Recommendation] = None
     report: Optional[Report] = None
+    ai_analysis: Optional[AiAnalysis] = None
 
     def is_reviewable_low_confidence(self) -> bool:
         """BR1."""

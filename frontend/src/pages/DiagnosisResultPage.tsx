@@ -10,7 +10,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { ProgressRing } from "@/components/ui/ProgressRing";
-import { SeverityBadge, AffectedAreaBar, WeatherCard, RecommendationList, TreatmentSection } from "@/components/diagnosis/DiagnosisPanels";
+import { SeverityBadge, AffectedAreaBar, WeatherCard, RecommendationList, TreatmentSection, AiAnalysisSection } from "@/components/diagnosis/DiagnosisPanels";
 import { formatDate } from "@/utils/format";
 import { ApiError } from "@/types/api";
 
@@ -137,6 +137,15 @@ export default function DiagnosisResultPage() {
               {d.disease.transmission_method}
             </p>
           )}
+        </Card>
+      )}
+
+      {d.ai_analysis && d.ai_analysis.status !== "disabled" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t.result.aiAnalysis}</CardTitle>
+          </CardHeader>
+          <AiAnalysisSection aiAnalysis={d.ai_analysis} />
         </Card>
       )}
 

@@ -13,9 +13,10 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.domain.entities.diagnosis import Diagnosis, PestDetection, Recommendation, Report, SeverityLevel, WeatherSnapshot
+from app.domain.entities.diagnosis import AiAnalysis, Diagnosis, PestDetection, Recommendation, Report, SeverityLevel, WeatherSnapshot
 from app.domain.repositories.interfaces import IDiagnosisRepository
 from app.infrastructure.db.models.diagnosis_model import (
+    AiAnalysisModel,
     DiagnosisModel,
     PestDetectionModel,
     RecommendationModel,
@@ -66,6 +67,23 @@ def _to_entity(m: DiagnosisModel) -> Diagnosis:
                    qr_code_ref=m.report.qr_code_ref, generated_at=m.report.generated_at)
             if m.report else None
         ),
+        ai_analysis=(
+            AiAnalysis(
+                id=m.ai_analysis.id, diagnosis_id=m.ai_analysis.diagnosis_id, status=m.ai_analysis.status,
+                diagnosis_explanation=m.ai_analysis.diagnosis_explanation,
+                observed_symptoms=m.ai_analysis.observed_symptoms_json or [],
+                cv_consistency=m.ai_analysis.cv_consistency,
+                confidence_assessment=m.ai_analysis.confidence_assessment,
+                severity_explanation=m.ai_analysis.severity_explanation,
+                treatment_guidance=m.ai_analysis.treatment_guidance_json or [],
+                prevention_guidance=m.ai_analysis.prevention_guidance_json or [],
+                environmental_risk=m.ai_analysis.environmental_risk,
+                urgency=m.ai_analysis.urgency,
+                model_name=m.ai_analysis.model_name,
+                message=m.ai_analysis.message,
+                generated_at=m.ai_analysis.generated_at,
+            ) if m.ai_analysis else None
+        ),
     )
 
 
@@ -106,6 +124,17 @@ class SqlAlchemyDiagnosisRepository(IDiagnosisRepository):
         if diagnosis.report:
             rpt = diagnosis.report
             self.db.add(ReportModel(diagnosis_id=model.id, file_ref=rpt.file_ref, qr_code_ref=rpt.qr_code_ref))
+        if diagnosis.ai_analysis:
+            aa = diagnosis.ai_analysis
+            self.db.add(AiAnalysisModel(
+                diagnosis_id=model.id, status=aa.status, diagnosis_explanation=aa.diagnosis_explanation,
+                observed_symptoms_json=aa.observed_symptoms or None, cv_consistency=aa.cv_consistency,
+                confidence_assessment=aa.confidence_assessment, severity_explanation=aa.severity_explanation,
+                treatment_guidance_json=aa.treatment_guidance or None,
+                prevention_guidance_json=aa.prevention_guidance or None,
+                environmental_risk=aa.environmental_risk, urgency=aa.urgency,
+                model_name=aa.model_name, message=aa.message,
+            ))
 
         self.db.commit()
         self.db.refresh(model)
@@ -119,6 +148,7 @@ class SqlAlchemyDiagnosisRepository(IDiagnosisRepository):
                 joinedload(DiagnosisModel.weather_snapshot),
                 joinedload(DiagnosisModel.recommendation),
                 joinedload(DiagnosisModel.report),
+                joinedload(DiagnosisModel.ai_analysis),
             )
             .where(DiagnosisModel.id == diagnosis_id)
         )
@@ -212,3 +242,32 @@ class SqlAlchemyDiagnosisRepository(IDiagnosisRepository):
         self.db.refresh(model)
         return Report(id=model.id, diagnosis_id=model.diagnosis_id, file_ref=model.file_ref,
                        qr_code_ref=model.qr_code_ref, generated_at=model.generated_at)
+
+    def attach_ai_analysis(self, diagnosis_id: UUID, ai_analysis: AiAnalysis) -> AiAnalysis:
+        model = AiAnalysisModel(
+            diagnosis_id=diagnosis_id, status=ai_analysis.status,
+            diagnosis_explanation=ai_analysis.diagnosis_explanation,
+            observed_symptoms_json=ai_analysis.observed_symptoms or None,
+            cv_consistency=ai_analysis.cv_consistency,
+            confidence_assessment=ai_analysis.confidence_assessment,
+            severity_explanation=ai_analysis.severity_explanation,
+            treatment_guidance_json=ai_analysis.treatment_guidance or None,
+            prevention_guidance_json=ai_analysis.prevention_guidance or None,
+            environmental_risk=ai_analysis.environmental_risk,
+            urgency=ai_analysis.urgency, model_name=ai_analysis.model_name,
+            message=ai_analysis.message,
+        )
+        self.db.add(model)
+        self.db.commit()
+        self.db.refresh(model)
+        return AiAnalysis(
+            id=model.id, diagnosis_id=model.diagnosis_id, status=model.status,
+            diagnosis_explanation=model.diagnosis_explanation,
+            observed_symptoms=model.observed_symptoms_json or [],
+            cv_consistency=model.cv_consistency, confidence_assessment=model.confidence_assessment,
+            severity_explanation=model.severity_explanation,
+            treatment_guidance=model.treatment_guidance_json or [],
+            prevention_guidance=model.prevention_guidance_json or [],
+            environmental_risk=model.environmental_risk, urgency=model.urgency,
+            model_name=model.model_name, message=model.message, generated_at=model.generated_at,
+        )

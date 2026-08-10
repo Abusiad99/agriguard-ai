@@ -70,6 +70,19 @@ class Settings(BaseSettings):
     weather_api_base_url: str = Field(default="https://api.open-meteo.com/v1/forecast")
     weather_request_timeout_seconds: float = 5.0
 
+    # --- Gemini AI reasoning layer (optional multimodal explanation on top of the
+    # existing CV diagnosis — see docs/GEMINI_INTEGRATION.md). Leaving
+    # gemini_api_key empty disables the feature entirely; every other part of the
+    # diagnosis pipeline is unaffected either way. ---
+    gemini_api_key: str = Field(default="", description="Server-side only. Never exposed to the frontend.")
+    gemini_model: str = Field(default="gemini-2.5-flash")
+    gemini_timeout_seconds: float = 20.0
+    gemini_max_tool_calls: int = 6  # cap on automatic function-calling round-trips per analysis
+
+    @property
+    def gemini_enabled(self) -> bool:
+        return bool(self.gemini_api_key)
+
     # --- Email/SMTP (FR-AUTH-4) ---
     smtp_host: str = Field(default="")
     smtp_port: int = 587

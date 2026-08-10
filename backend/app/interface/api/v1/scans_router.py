@@ -29,6 +29,7 @@ from app.interface.api.v1.dependencies import (
     get_scan_orchestrator,
     get_treatment_repository,
 )
+from app.interface.schemas.ai_analysis_schemas import AiAnalysisSchema, AiAnalysisStatus, AnalysisUrgency, CvConsistency, GeminiAnalysisSchema
 from app.interface.schemas.diagnosis_schemas import (
     DiagnosisResponse,
     DiagnosisSummarySchema,
@@ -45,6 +46,29 @@ from app.interface.schemas.diagnosis_schemas import (
 
 router = APIRouter(tags=["Scans & Diagnoses"])
 settings = get_settings()
+
+
+def _ai_analysis_to_schema(diagnosis) -> Optional[AiAnalysisSchema]:
+    aa = diagnosis.ai_analysis
+    if aa is None:
+        return None  # Gemini was disabled for this scan — nothing to show, not an error state
+    if aa.status != "ok":
+        return AiAnalysisSchema(status=AiAnalysisStatus.UNAVAILABLE,
+                                 message=aa.message or "AI analysis temporarily unavailable.")
+    return AiAnalysisSchema(
+        status=AiAnalysisStatus.OK,
+        analysis=GeminiAnalysisSchema(
+            diagnosis_explanation=aa.diagnosis_explanation or "",
+            observed_symptoms=aa.observed_symptoms,
+            cv_consistency=CvConsistency(aa.cv_consistency) if aa.cv_consistency else CvConsistency.UNCERTAIN,
+            confidence_assessment=aa.confidence_assessment or "",
+            severity_explanation=aa.severity_explanation or "",
+            treatment_guidance=aa.treatment_guidance,
+            prevention_guidance=aa.prevention_guidance,
+            environmental_risk=aa.environmental_risk or "",
+            urgency=AnalysisUrgency(aa.urgency) if aa.urgency else AnalysisUrgency.LOW,
+        ),
+    )
 
 
 def _diagnosis_to_response(
@@ -125,6 +149,7 @@ def _diagnosis_to_response(
         ),
         report_url=f"/api/v1/reports/{diagnosis.id}" if diagnosis.report else None,
         diagnosed_at=diagnosis.diagnosed_at,
+        ai_analysis=_ai_analysis_to_schema(diagnosis),
     )
 
 

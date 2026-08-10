@@ -133,6 +133,33 @@ export interface RecommendationSchema {
   fertilizer_advice?: string | null;
 }
 
+// ---------- AI Agricultural Analysis (Gemini reasoning layer — backend/app/interface/schemas/ai_analysis_schemas.py) ----------
+// This is an explanation/reasoning layer on top of the CV diagnosis above, never
+// a replacement for it — the CV model's plant/disease/confidence/severity fields
+// remain authoritative regardless of what this section contains or whether it's
+// present at all.
+export type CvConsistency = "consistent" | "partially_consistent" | "inconsistent" | "uncertain";
+export type AnalysisUrgency = "low" | "medium" | "high";
+export type AiAnalysisStatus = "ok" | "disabled" | "unavailable";
+
+export interface GeminiAnalysisSchema {
+  diagnosis_explanation: string;
+  observed_symptoms: string[];
+  cv_consistency: CvConsistency;
+  confidence_assessment: string;
+  severity_explanation: string;
+  treatment_guidance: string[];
+  prevention_guidance: string[];
+  environmental_risk: string;
+  urgency: AnalysisUrgency;
+}
+
+export interface AiAnalysisSchema {
+  status: AiAnalysisStatus;
+  analysis?: GeminiAnalysisSchema | null;
+  message?: string | null;
+}
+
 export type DiagnosisStatus = "completed" | "unrecognized_plant";
 
 export interface DiagnosisResponse {
@@ -156,6 +183,7 @@ export interface DiagnosisResponse {
   recommendation?: RecommendationSchema | null;
   report_url?: string | null;
   diagnosed_at?: string | null;
+  ai_analysis?: AiAnalysisSchema | null;
 }
 
 export interface UnrecognizedPlantResponse {

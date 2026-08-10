@@ -5,6 +5,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
+from app.interface.schemas.ai_analysis_schemas import AiAnalysisSchema
+
 
 class PlantSchema(BaseModel):
     name: str
@@ -73,6 +75,7 @@ class DiagnosisResponse(BaseModel):
     recommendation: Optional[RecommendationSchema] = None
     report_url: Optional[str] = None
     diagnosed_at: Optional[datetime] = None
+    ai_analysis: Optional[AiAnalysisSchema] = None
 
 
 class UnrecognizedPlantResponse(BaseModel):

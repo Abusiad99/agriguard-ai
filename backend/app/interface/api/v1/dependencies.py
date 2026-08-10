@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.application.services.auth_service import AuthService
 from app.application.services.dashboard_admin_service import AdminService, DashboardService
+from app.application.services.gemini_analysis_service import GeminiAnalysisService
 from app.application.services.knowledge_base_service import KnowledgeBaseService
 from app.application.services.scan_service import ScanOrchestrator
 from app.core.config import get_settings
@@ -21,6 +22,7 @@ from app.core.exceptions import AuthenticationError, AuthorizationError, TokenEx
 from app.domain.entities.user import User, UserRole
 from app.infrastructure.db.session import get_db
 from app.infrastructure.external.ai_pipeline_client import AiPipelineClient
+from app.infrastructure.external.gemini_client import GeminiClient
 from app.infrastructure.external.weather_client import WeatherService
 from app.infrastructure.reporting.pdf_report_generator import PdfReportGenerator
 from app.infrastructure.repositories.audit_log_repository import SqlAlchemyAuditLogRepository
@@ -44,6 +46,7 @@ _password_hasher = PasswordHasher()
 _weather_service = WeatherService()
 _pdf_generator = PdfReportGenerator()
 _ai_client = AiPipelineClient()
+_gemini_service = GeminiAnalysisService(GeminiClient())
 _storage = LocalObjectStorage(base_dir=settings.local_storage_dir)
 
 
@@ -93,7 +96,7 @@ def get_scan_orchestrator(
     return ScanOrchestrator(
         storage=_storage, ai_client=_ai_client, plant_repo=plant_repo, disease_repo=disease_repo,
         treatment_repo=treatment_repo, diagnosis_repo=diagnosis_repo, weather_service=_weather_service,
-        pdf_generator=_pdf_generator,
+        pdf_generator=_pdf_generator, gemini_service=_gemini_service,
     )
 
 

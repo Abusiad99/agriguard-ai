@@ -15,11 +15,13 @@ from uuid import UUID
 
 from PIL import Image, UnidentifiedImageError
 
+from app.application.services.gemini_analysis_service import GeminiAnalysisService
 from app.core.config import get_settings
 from app.core.exceptions import InvalidImageError, ServiceUnavailableError
 from app.domain.entities.diagnosis import Diagnosis, PestDetection, Recommendation, SeverityLevel, WeatherSnapshot
 from app.domain.repositories.interfaces import IDiagnosisRepository, IPlantRepository, ITreatmentRepository, IDiseaseRepository
 from app.infrastructure.external.ai_pipeline_client import AiPipelineClient, AiPipelineUnavailableError
+from app.infrastructure.external.gemini_client import GeminiRequestContext
 from app.infrastructure.external.weather_client import WeatherService
 from app.infrastructure.reporting.pdf_report_generator import PdfReportGenerator, ReportData
 from app.infrastructure.storage.object_storage import IObjectStorage, generate_storage_key
@@ -46,6 +48,7 @@ class ScanOrchestrator:
         diagnosis_repo: IDiagnosisRepository,
         weather_service: WeatherService,
         pdf_generator: PdfReportGenerator,
+        gemini_service: Optional[GeminiAnalysisService] = None,
     ):
         self.storage = storage
         self.ai_client = ai_client
@@ -55,6 +58,11 @@ class ScanOrchestrator:
         self.diagnosis_repo = diagnosis_repo
         self.weather_service = weather_service
         self.pdf_generator = pdf_generator
+        # Optional: constructing ScanOrchestrator without a gemini_service (e.g. in
+        # older call sites or tests that don't care about it) simply means the AI
+        # Agricultural Analysis section is skipped, same as if GEMINI_API_KEY were
+        # unset — never a hard dependency.
+        self.gemini_service = gemini_service or GeminiAnalysisService()
 
     def process_scan(self, user_id: UUID, image_bytes: bytes, content_type: str,
                       latitude: Optional[float] = None, longitude: Optional[float] = None,
@@ -107,6 +115,14 @@ class ScanOrchestrator:
         # --- Step 10: agricultural recommendation ---
         recommendation = self._build_recommendation(diagnosis_output, weather_snapshot)
 
+        # --- Gemini multimodal reasoning layer (best-effort, additive — never
+        # blocks or alters the CV diagnosis; see docs/GEMINI_INTEGRATION.md). Runs
+        # after the CV result, disease lookup, and weather are all known, since
+        # Gemini's job is to reason ABOUT them, not replace any of them. ---
+        ai_analysis = self._run_gemini_analysis(
+            image_bytes, image.format, diagnosis_output, plant_entity, disease_entity, weather_snapshot,
+        )
+
         # --- Assemble and persist the Diagnosis aggregate (BR2: immutable) ---
         severity = SeverityLevel(diagnosis_output.severity_level) if diagnosis_output.severity_level else None
         diagnosis = Diagnosis(
@@ -117,7 +133,7 @@ class ScanOrchestrator:
             original_image_ref=original_ref, heatmap_image_ref=heatmap_ref,
             low_confidence_flag=diagnosis_output.low_confidence_flag, unrecognized_plant=False,
             location_lat=latitude if attach_location else None, location_lon=longitude if attach_location else None,
-            weather_snapshot=weather_snapshot, recommendation=recommendation,
+            weather_snapshot=weather_snapshot, recommendation=recommendation, ai_analysis=ai_analysis,
         )
         saved_diagnosis = self.diagnosis_repo.create(diagnosis)
 
@@ -128,6 +144,41 @@ class ScanOrchestrator:
 
         final = self.diagnosis_repo.get_by_id(saved_diagnosis.id)
         return ScanResult(status="completed", diagnosis=final)
+
+    def _run_gemini_analysis(self, image_bytes: bytes, image_format: Optional[str], diagnosis_output,
+                              plant_entity, disease_entity, weather_snapshot):
+        # Belt-and-suspenders: GeminiAnalysisService/GeminiClient already never
+        # raise (every failure mode is caught internally and turned into a
+        # status="unavailable" result), but this call is wrapped again here too
+        # so that even an unforeseen bug in that layer can never take down the
+        # rest of the scan pipeline (requirement #8: "Gemini is an enhancement,
+        # not the single point of failure").
+        try:
+            mime_type = f"image/{(image_format or 'jpeg').lower()}"
+            if mime_type == "image/jpg":
+                mime_type = "image/jpeg"
+            weather_summary = None
+            if weather_snapshot:
+                weather_summary = (
+                    f"Temperature: {weather_snapshot.temperature_c}°C, Humidity: {weather_snapshot.humidity_pct}%, "
+                    f"Wind: {weather_snapshot.wind_speed_kmh} km/h, Rain probability: "
+                    f"{weather_snapshot.rain_probability_pct}%, UV Index: {weather_snapshot.uv_index}"
+                )
+            ctx = GeminiRequestContext(
+                image_bytes=image_bytes, image_mime_type=mime_type,
+                plant_name=plant_entity.canonical_name if plant_entity else None,
+                cv_condition=disease_entity.name if disease_entity else diagnosis_output.condition,
+                cv_confidence_score=diagnosis_output.confidence_score,
+                cv_severity_level=diagnosis_output.severity_level,
+                cv_affected_area_pct=diagnosis_output.affected_area_pct,
+                disease_description=disease_entity.description if disease_entity else None,
+                disease_symptoms=disease_entity.symptoms if disease_entity else [],
+                weather_summary=weather_summary,
+            )
+            return self.gemini_service.analyze(ctx, self.plant_repo, self.disease_repo, self.treatment_repo)
+        except Exception as exc:  # noqa: BLE001 - see comment above
+            logger.warning("Gemini analysis step raised unexpectedly and was skipped: %s", exc)
+            return None
 
     def _save_original_image(self, image: Image.Image, original_bytes: bytes) -> str:
         # Strip EXIF by re-encoding through a fresh Image object with no exif data

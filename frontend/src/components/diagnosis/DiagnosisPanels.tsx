@@ -1,5 +1,6 @@
-import type { RecommendationSchema, SeverityLevel, TreatmentSchema, WeatherSchema } from "@/types/api";
+import type { AiAnalysisSchema, AnalysisUrgency, CvConsistency, RecommendationSchema, SeverityLevel, TreatmentSchema, WeatherSchema } from "@/types/api";
 import { Badge, severityTone } from "@/components/ui/Badge";
+import { Alert } from "@/components/ui/Alert";
 import { useLocale } from "@/context/LocaleContext";
 
 const SEVERITY_COLOR: Record<SeverityLevel, string> = {
@@ -121,6 +122,113 @@ export function TreatmentSection({ treatment }: { treatment?: TreatmentSchema | 
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+const CONSISTENCY_TONE: Record<CvConsistency, "primary" | "mild" | "moderate" | "severe"> = {
+  consistent: "primary",
+  partially_consistent: "mild",
+  inconsistent: "severe",
+  uncertain: "moderate",
+};
+
+const URGENCY_TONE: Record<AnalysisUrgency, "primary" | "moderate" | "severe"> = {
+  low: "primary",
+  medium: "moderate",
+  high: "severe",
+};
+
+/** "AI Agricultural Analysis" — the Gemini multimodal reasoning layer's
+ * explanation on top of the existing CV diagnosis (never a replacement for it).
+ * Renders one of three states:
+ *   - no `aiAnalysis` prop at all / status "disabled": section is omitted entirely
+ *     (Gemini wasn't configured for this deployment — not an error, nothing to show)
+ *   - status "unavailable": a single Alert explaining the analysis couldn't be
+ *     produced this time, CV diagnosis above is unaffected
+ *   - status "ok": the full structured explanation
+ */
+export function AiAnalysisSection({ aiAnalysis }: { aiAnalysis?: AiAnalysisSchema | null }) {
+  const { t } = useLocale();
+  if (!aiAnalysis || aiAnalysis.status === "disabled") return null;
+
+  if (aiAnalysis.status === "unavailable" || !aiAnalysis.analysis) {
+    return <Alert tone="warning">{aiAnalysis.message || t.result.aiAnalysisUnavailable}</Alert>;
+  }
+
+  const a = aiAnalysis.analysis;
+  const consistencyLabel: Record<CvConsistency, string> = {
+    consistent: t.result.aiConsistencyConsistent,
+    partially_consistent: t.result.aiConsistencyPartiallyConsistent,
+    inconsistent: t.result.aiConsistencyInconsistent,
+    uncertain: t.result.aiConsistencyUncertain,
+  };
+  const urgencyLabel: Record<AnalysisUrgency, string> = {
+    low: t.result.aiUrgencyLow,
+    medium: t.result.aiUrgencyMedium,
+    high: t.result.aiUrgencyHigh,
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={CONSISTENCY_TONE[a.cv_consistency]}>
+          {t.result.aiConsistency}: {consistencyLabel[a.cv_consistency]}
+        </Badge>
+        <Badge tone={URGENCY_TONE[a.urgency]}>
+          {t.result.aiUrgency}: {urgencyLabel[a.urgency]}
+        </Badge>
+      </div>
+
+      <p className="text-sm text-ink">{a.diagnosis_explanation}</p>
+
+      {a.observed_symptoms.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-sm font-semibold text-primary-dark">{t.result.aiObservedSymptoms}</p>
+          <ul className="list-disc ps-5 text-sm text-ink">
+            {a.observed_symptoms.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div>
+        <p className="mb-1 text-sm font-semibold text-primary-dark">{t.result.aiConfidenceAssessment}</p>
+        <p className="text-sm text-ink">{a.confidence_assessment}</p>
+      </div>
+
+      <div>
+        <p className="mb-1 text-sm font-semibold text-primary-dark">{t.result.aiSeverityExplanation}</p>
+        <p className="text-sm text-ink">{a.severity_explanation}</p>
+      </div>
+
+      {a.treatment_guidance.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-sm font-semibold text-primary-dark">{t.result.aiTreatmentGuidance}</p>
+          <ul className="list-disc ps-5 text-sm text-ink">
+            {a.treatment_guidance.map((g) => (
+              <li key={g}>{g}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {a.prevention_guidance.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-sm font-semibold text-primary-dark">{t.result.aiPreventionGuidance}</p>
+          <ul className="list-disc ps-5 text-sm text-ink">
+            {a.prevention_guidance.map((g) => (
+              <li key={g}>{g}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div>
+        <p className="mb-1 text-sm font-semibold text-primary-dark">{t.result.aiEnvironmentalRisk}</p>
+        <p className="text-sm text-ink">{a.environmental_risk}</p>
+      </div>
     </div>
   );
 }

@@ -13,6 +13,8 @@ x-backend-common: &backend-common
     LOG_DIR: /app/logs
     CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-["http://localhost"]}
     WEATHER_API_BASE_URL: ${WEATHER_API_BASE_URL:-https://api.open-meteo.com/v1/forecast}
+    GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
   volumes:
     - storage_data:/app/storage
     - artifacts_data:/app/artifacts

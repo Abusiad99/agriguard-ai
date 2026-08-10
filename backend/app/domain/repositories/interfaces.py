@@ -113,6 +113,12 @@ class IDiagnosisRepository(abc.ABC):
         generated after the diagnosis exists, since the PDF embeds the diagnosis id)."""
         ...
 
+    @abc.abstractmethod
+    def attach_ai_analysis(self, diagnosis_id: UUID, ai_analysis):
+        """Attach a Gemini reasoning-layer AiAnalysis record to an already-persisted
+        diagnosis. Optional: a diagnosis with Gemini disabled simply never calls this."""
+        ...
+
 
 class IAuditLogRepository(abc.ABC):
     @abc.abstractmethod
