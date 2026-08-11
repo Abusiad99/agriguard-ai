@@ -1,5 +1,5 @@
 #!/bin/sh
-# AgriGuard AI — Backend container entrypoint.
+# AgriGuard AI â€” Backend container entrypoint.
 #
 # Runs Alembic migrations (database migration startup strategy) before the app
 # starts, waiting for PostgreSQL to be reachable first (docker-compose's

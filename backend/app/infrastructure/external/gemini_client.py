@@ -15,8 +15,8 @@ plant/disease/confidence/severity and is asked to explain, corroborate, or flag
 inconsistency with the visible image. It reasons about *guidance* using function
 calling into the existing, already-BR6-compliant treatment repository — it cannot
 invent a chemical product, dosage, or disease unsupported by the database, because
-the tool functions themselves enforce that (see `_GeminiTools` below), not Gemini's
-good behavior.
+the tool functions themselves enforce that (see the module-level tool functions
+below), not Gemini's good behavior.
 
 FAILURE MODEL (requirement #8): every failure mode here — missing API key, network
 error, timeout, rate limit, invalid/unparseable model output — results in
@@ -48,11 +48,38 @@ the same constraint affecting Open-Meteo). Every code path up to the actual
 network call was validated; the live call itself is marked BLOCKED in the test
 report. Re-verify against current google-genai SDK docs if Google has changed the
 API surface since this was written.
+
+NOTE ON TOOLS BEING MODULE-LEVEL PLAIN FUNCTIONS, NOT BOUND METHODS (added
+post-deployment fix): the original implementation exposed the tools as bound
+methods on a `_GeminiTools` instance holding live repository objects
+(`self._plant_repo`, etc., backed by a SQLAlchemy session). The google-genai SDK's
+automatic-function-calling machinery deep-copies the tool callables it is given
+(both to build function declarations and, in some code paths, to keep bookkeeping
+around invocations). Deep-copying a bound method deep-copies its `__self__`, which
+deep-copied the repository objects and, transitively, SQLAlchemy session/engine
+internals that themselves hold references to modules (e.g. the DB driver module) —
+which are not deep-copyable, producing
+`TypeError: cannot pickle 'module' object`. Setting `ignore_call_history=True`
+alone was NOT sufficient (the failure happens before any call history would even
+be recorded).
+
+The fix: the four tool functions are now plain, module-level functions with no
+bound state at all. They read the current request's repositories and weather
+summary from a `contextvars.ContextVar`, which `GeminiClient.analyze()` sets
+immediately before the Gemini call and clears in a `finally` block. Plain
+functions are atomic with respect to `copy.deepcopy` (Python does not attempt to
+copy a function's internals, it just returns the same function object), so this
+sidesteps the SDK's internal copying entirely regardless of what the repository
+objects contain. `contextvars.ContextVar` (rather than a plain module-level
+global) is used so this remains correct under concurrent requests handled by
+async workers, since each request gets its own context.
 """
 from __future__ import annotations
 
 import json
 import logging
+import traceback
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -95,130 +122,130 @@ class GeminiRequestContext:
     weather_summary: Optional[str] = None  # pre-formatted by the caller from the existing WeatherService result
 
 
-class _GeminiTools:
-    """Function-calling tools exposed to Gemini. Every function is read-only, goes
-    through the existing repository interfaces only (no SQL, no direct DB writes,
-    no arbitrary code execution — requirement #4), and independently enforces BR6
-    (a chemical treatment is only returned with real dosage instructions if it
-    carries a source citation or is explicitly marked authority-referral-only;
-    otherwise the safe fallback string is returned instead — the same rule
-    ScanOrchestrator._generate_report already applies). Gemini cannot bypass this
-    by asking a different way: the enforcement lives in the tool, not the prompt.
+@dataclass
+class _ToolsRuntimeContext:
+    """Lightweight, request-scoped bundle of everything the module-level tool
+    functions need. Held only in the ContextVar below, never as an attribute of
+    anything passed to the google-genai SDK (see the module docstring's "NOTE ON
+    TOOLS BEING MODULE-LEVEL PLAIN FUNCTIONS" section for why)."""
 
-    Plain bound methods with type-hinted parameters and docstrings are used
-    directly as `tools=[...]` entries — the google-genai SDK introspects them to
-    build function declarations and performs automatic function calling (invoking
-    them itself mid-generation and feeding results back to the model) with no
-    manual dispatch loop needed here.
+    plant_repo: IPlantRepository
+    disease_repo: IDiseaseRepository
+    treatment_repo: ITreatmentRepository
+    weather_summary: Optional[str]
+
+
+_tools_ctx: ContextVar[Optional[_ToolsRuntimeContext]] = ContextVar("_gemini_tools_ctx", default=None)
+
+
+def get_plant_info(plant_name: str) -> dict:
+    """Look up trusted information about a plant species by its common name.
+
+    Args:
+        plant_name: Common/canonical name of the plant, e.g. "tomato".
     """
+    ctx = _tools_ctx.get()
+    if ctx is None:  # pragma: no cover - defensive, should never happen mid-call
+        return {"found": False, "reason": "no_active_context"}
+    try:
+        plant = ctx.plant_repo.get_by_canonical_name(plant_name.strip().lower())
+    except Exception as exc:  # noqa: BLE001 - defensive, repo layer already narrow
+        logger.warning("Gemini tool get_plant_info failed: %s", exc)
+        return {"found": False, "reason": "lookup_failed"}
+    if plant is None:
+        return {"found": False}
+    return {
+        "found": True,
+        "canonical_name": plant.canonical_name,
+        "scientific_name": plant.scientific_name,
+        "synonyms": plant.synonyms,
+    }
 
-    def __init__(
-        self,
-        plant_repo: IPlantRepository,
-        disease_repo: IDiseaseRepository,
-        treatment_repo: ITreatmentRepository,
-        weather_summary: Optional[str],
-    ):
-        self._plant_repo = plant_repo
-        self._disease_repo = disease_repo
-        self._treatment_repo = treatment_repo
-        self._weather_summary = weather_summary
 
-    def get_plant_info(self, plant_name: str) -> dict:
-        """Look up trusted information about a plant species by its common name.
+def get_disease_info(plant_name: str, disease_name: str) -> dict:
+    """Look up trusted, database-verified information about a plant disease.
 
-        Args:
-            plant_name: Common/canonical name of the plant, e.g. "tomato".
-        """
-        try:
-            plant = self._plant_repo.get_by_canonical_name(plant_name.strip().lower())
-        except Exception as exc:  # pragma: no cover - defensive, repo layer already narrow
-            logger.warning("Gemini tool get_plant_info failed: %s", exc)
-            return {"found": False, "reason": "lookup_failed"}
+    Args:
+        plant_name: Common/canonical name of the plant, e.g. "tomato".
+        disease_name: Disease/condition name as known in the knowledge base,
+            e.g. "early_blight".
+    """
+    ctx = _tools_ctx.get()
+    if ctx is None:  # pragma: no cover
+        return {"found": False, "reason": "no_active_context"}
+    try:
+        plant = ctx.plant_repo.get_by_canonical_name(plant_name.strip().lower())
         if plant is None:
-            return {"found": False}
-        return {
-            "found": True,
-            "canonical_name": plant.canonical_name,
-            "scientific_name": plant.scientific_name,
-            "synonyms": plant.synonyms,
-        }
+            return {"found": False, "reason": "unknown_plant"}
+        disease = ctx.disease_repo.get_current_by_plant_and_name(plant.id, disease_name)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gemini tool get_disease_info failed: %s", exc)
+        return {"found": False, "reason": "lookup_failed"}
+    if disease is None:
+        return {"found": False, "reason": "unknown_disease"}
+    return {
+        "found": True,
+        "name": disease.name,
+        "type": disease.disease_type,
+        "description": disease.description,
+        "symptoms": disease.symptoms,
+        "causes": disease.causes,
+        "transmission_method": disease.transmission_method,
+        "recovery_probability": disease.recovery_probability,
+        "estimated_recovery_time": disease.estimated_recovery_time,
+    }
 
-    def get_disease_info(self, plant_name: str, disease_name: str) -> dict:
-        """Look up trusted, database-verified information about a plant disease.
 
-        Args:
-            plant_name: Common/canonical name of the plant, e.g. "tomato".
-            disease_name: Disease/condition name as known in the knowledge base,
-                e.g. "early_blight".
-        """
-        try:
-            plant = self._plant_repo.get_by_canonical_name(plant_name.strip().lower())
-            if plant is None:
-                return {"found": False, "reason": "unknown_plant"}
-            disease = self._disease_repo.get_current_by_plant_and_name(plant.id, disease_name)
-        except Exception as exc:  # pragma: no cover
-            logger.warning("Gemini tool get_disease_info failed: %s", exc)
-            return {"found": False, "reason": "lookup_failed"}
+def get_treatment_info(plant_name: str, disease_name: str) -> dict:
+    """Look up trusted, database-verified treatment options for a diagnosed
+    plant disease. Chemical treatments without a verified dosage source are
+    never returned with dosage instructions — only a referral notice.
+
+    Args:
+        plant_name: Common/canonical name of the plant, e.g. "tomato".
+        disease_name: Disease/condition name as known in the knowledge base.
+    """
+    ctx = _tools_ctx.get()
+    if ctx is None:  # pragma: no cover
+        return {"found": False, "reason": "no_active_context"}
+    try:
+        plant = ctx.plant_repo.get_by_canonical_name(plant_name.strip().lower())
+        if plant is None:
+            return {"found": False, "reason": "unknown_plant"}
+        disease = ctx.disease_repo.get_current_by_plant_and_name(plant.id, disease_name)
         if disease is None:
             return {"found": False, "reason": "unknown_disease"}
-        return {
-            "found": True,
-            "name": disease.name,
-            "type": disease.disease_type,
-            "description": disease.description,
-            "symptoms": disease.symptoms,
-            "causes": disease.causes,
-            "transmission_method": disease.transmission_method,
-            "recovery_probability": disease.recovery_probability,
-            "estimated_recovery_time": disease.estimated_recovery_time,
+        treatments = ctx.treatment_repo.get_current_for_disease(disease.id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gemini tool get_treatment_info failed: %s", exc)
+        return {"found": False, "reason": "lookup_failed"}
+
+    result = {"found": True, "organic": None, "chemical": None, "biological": None}
+    for t in treatments:
+        # BR6 enforcement, independent of Gemini — mirrors
+        # ScanOrchestrator._generate_report's identical rule.
+        if t.category.value == "chemical" and not t.is_dosage_verified():
+            instructions = ("Consult your local agricultural authority for verified "
+                             "dosage guidance for this treatment; no verified dosage "
+                             "is on file.")
+        else:
+            instructions = t.instructions
+        result[t.category.value] = {
+            "instructions": instructions,
+            "safety_notes": t.safety_notes,
+            "source_citation": t.source_citation,
         }
+    return result
 
-    def get_treatment_info(self, plant_name: str, disease_name: str) -> dict:
-        """Look up trusted, database-verified treatment options for a diagnosed
-        plant disease. Chemical treatments without a verified dosage source are
-        never returned with dosage instructions — only a referral notice.
 
-        Args:
-            plant_name: Common/canonical name of the plant, e.g. "tomato".
-            disease_name: Disease/condition name as known in the knowledge base.
-        """
-        try:
-            plant = self._plant_repo.get_by_canonical_name(plant_name.strip().lower())
-            if plant is None:
-                return {"found": False, "reason": "unknown_plant"}
-            disease = self._disease_repo.get_current_by_plant_and_name(plant.id, disease_name)
-            if disease is None:
-                return {"found": False, "reason": "unknown_disease"}
-            treatments = self._treatment_repo.get_current_for_disease(disease.id)
-        except Exception as exc:  # pragma: no cover
-            logger.warning("Gemini tool get_treatment_info failed: %s", exc)
-            return {"found": False, "reason": "lookup_failed"}
-
-        result = {"found": True, "organic": None, "chemical": None, "biological": None}
-        for t in treatments:
-            # BR6 enforcement, independent of Gemini — mirrors
-            # ScanOrchestrator._generate_report's identical rule.
-            if t.category.value == "chemical" and not t.is_dosage_verified():
-                instructions = ("Consult your local agricultural authority for verified "
-                                 "dosage guidance for this treatment; no verified dosage "
-                                 "is on file.")
-            else:
-                instructions = t.instructions
-            result[t.category.value] = {
-                "instructions": instructions,
-                "safety_notes": t.safety_notes,
-                "source_citation": t.source_citation,
-            }
-        return result
-
-    def get_weather(self) -> dict:
-        """Get the current weather/environmental conditions already retrieved for
-        this scan's location, if the user shared their location. Does not perform
-        a new weather lookup — returns whatever the application already fetched."""
-        if not self._weather_summary:
-            return {"available": False}
-        return {"available": True, "summary": self._weather_summary}
+def get_weather() -> dict:
+    """Get the current weather/environmental conditions already retrieved for
+    this scan's location, if the user shared their location. Does not perform
+    a new weather lookup — returns whatever the application already fetched."""
+    ctx = _tools_ctx.get()
+    if ctx is None or not ctx.weather_summary:  # pragma: no cover
+        return {"available": False}
+    return {"available": True, "summary": ctx.weather_summary}
 
 
 _SYSTEM_INSTRUCTION = (
@@ -304,9 +331,19 @@ class GeminiClient:
             logger.warning("google-genai is not installed; Gemini analysis is unavailable.")
             return GeminiAnalysisResult(status="unavailable", message="AI analysis temporarily unavailable.")
 
+        # Make this request's repositories/weather available to the module-level
+        # tool functions for the duration of the call only (see module docstring
+        # "NOTE ON TOOLS BEING MODULE-LEVEL PLAIN FUNCTIONS").
+        token = _tools_ctx.set(
+            _ToolsRuntimeContext(
+                plant_repo=plant_repo,
+                disease_repo=disease_repo,
+                treatment_repo=treatment_repo,
+                weather_summary=ctx.weather_summary,
+            )
+        )
         try:
             client = self._get_sdk_client()
-            tools = _GeminiTools(plant_repo, disease_repo, treatment_repo, ctx.weather_summary)
 
             # --- Call 1: multimodal reasoning with function calling ---
             reasoning_response = client.models.generate_content(
@@ -317,10 +354,10 @@ class GeminiClient:
                 ],
                 config=types.GenerateContentConfig(
                     system_instruction=_SYSTEM_INSTRUCTION,
-                    tools=[tools.get_disease_info, tools.get_treatment_info,
-                           tools.get_plant_info, tools.get_weather],
+                    tools=[get_disease_info, get_treatment_info, get_plant_info, get_weather],
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(
                         maximum_remote_calls=settings.gemini_max_tool_calls,
+                        ignore_call_history=True,
                     ),
                     http_options=types.HttpOptions(timeout=int(settings.gemini_timeout_seconds * 1000)),
                 ),
@@ -361,5 +398,7 @@ class GeminiClient:
             # into the diagnosis pipeline (requirement #8). Never log the API key
             # (it never appears in these exception messages — the SDK raises HTTP
             # status/body details, not the request's auth header).
-            logger.warning("Gemini analysis failed (%s): %s", type(exc).__name__, exc)
+            logger.warning("Gemini analysis failed (%s): %s\n%s", type(exc).__name__, exc, traceback.format_exc())
             return GeminiAnalysisResult(status="unavailable", message="AI analysis temporarily unavailable.")
+        finally:
+            _tools_ctx.reset(token)
