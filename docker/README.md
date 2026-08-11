@@ -1,4 +1,40 @@
-# AgriGuard AI — Deployment Guide
+# AgriGuard AI — Deployment Guide 
+> ⚠️ **مهم قبل التحميل — هذا المشروع يستخدم Git LFS**
+>
+> مجلد `datasets/` يحتوي على آلاف صور التدريب المخزّنة عبر **Git LFS** (Git Large File Storage). لازم تتبع الخطوات التالية **بالترتيب** وإلا ستحصل على أخطاء تدريب غامضة (كل الصور تُرفض كـ "تالفة").
+>
+> **❌ لا تستخدم زر "Download ZIP"** — هذا ينزّل ملفات LFS كـ "pointer files" فارغة (~130 بايت لكل صورة بدل الصورة الفعلية)، وسيفشل التدريب فورًا.
+>
+> **✅ استخدم `git clone` بدلاً من ذلك:**
+>
+> ```bash
+> # 1) ثبّت Git LFS إذا لم يكن مثبتًا (مرة واحدة فقط على جهازك):
+> #    حمّله من https://git-lfs.com
+>
+> # 2) فعّل Git LFS (مرة واحدة فقط لكل جهاز):
+> git lfs install
+>
+> # 3) استنسخ الريبو (سيُنزّل صور LFS الحقيقية تلقائيًا):
+> git clone https://github.com/Abusiad99/agriguard-ai.git
+> cd agriguard-ai
+> ```
+>
+> **تحقق أن الصور نزلت بشكل صحيح** (يجب أن يكون الحجم عشرات/مئات الكيلوبايتات وليس ~130 بايت):
+>
+> ```bash
+> # PowerShell (Windows):
+> Get-ChildItem -Recurse -Filter *.jpg -Path datasets | Select-Object -First 1 | Get-Item | Select-Object Name, Length
+>
+> # bash/Linux/macOS:
+> ls -la datasets/plantwild_v2/*/*.jpg | head -1
+> ```
+>
+> إذا كان حجم الملف صغيرًا جدًا (~130 بايت)، فهذا يعني أن Git LFS لم يُفعَّل قبل الاستنساخ. الحل:
+>
+> ```bash
+> git lfs install
+> git lfs pull
+> ```
 
 ## 1. Prerequisites
 - Docker Engine 24+ and Docker Compose v2 (`docker compose`, not the legacy `docker-compose`).
