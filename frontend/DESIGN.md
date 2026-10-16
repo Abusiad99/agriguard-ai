@@ -1,57 +1,85 @@
-# AgriGuard AI — Frontend Design Rationale
+# AgriGuard AI — Frontend Design System ("Grove & Viewfinder")
 
-## Subject & Primary User
-The primary persona (Phase 1: "Farmer Youssef") uses this app outdoors, on a phone, in bright
-midday light, often not tech-savvy. The secondary persona (agronomist/admin) uses it indoors on a
-larger screen to review data. The design serves both without compromising either: a mobile-first
-utility app, not a marketing site.
+## Subject & primary user
+The primary persona ("Farmer Youssef") uses the app outdoors, on a phone, often one-handed and
+not tech-savvy; the secondary persona (agronomist/admin) reviews data indoors on a larger screen.
+The interface has to feel like a trustworthy professional instrument for both — calm, legible and
+fast — while still feeling alive and premium.
 
-## Why Not the Generic AI-Template Look
-Two defaults were deliberately avoided:
-- **Cream/off-white (#F4F1EA) + warm clay/terracotta (#D97757) + Inter everywhere** — the most
-  common "AI product" palette right now. Reusing it would make AgriGuard AI look like every other
-  generated app rather than a purpose-built agricultural tool.
-- **Rounded-2xl cards + drop-shadow-everywhere** — a generic SaaS-dashboard visual language with
-  no connection to the subject matter.
+## The idea
+Two images from the subject's own world carry the identity:
 
-## The Actual Palette: "Midday Field-Inspection"
-Grounded in the literal moment of use — a farmer inspecting a leaf at noon, not a golden-hour
-marketing photo:
-- **Canvas** `#F7F5EE` — a cooler, greener linen-white than the cliché cream, reads as a field
-  notebook page.
-- **Ink** `#1C2B22` — deep bottle-green-black instead of pure black, evokes wet soil/foliage
-  shadow.
-- **Primary** `#2F6B4F` — a confident, desaturated leaf green for actions/navigation.
-- **Severity scale** — `mild` wheat-gold `#D8A73D`, `moderate` burnt ochre `#C8722A`, `severe`
-  rust `#A13D2C`. This is the one place warm color appears, and it is used **only** functionally,
-  always tied to real severity data (never decoratively) — this is the "structure is information"
-  principle applied directly to the disease-severity domain.
-- **Line/border** `#D8DCC9` — a muted sage hairline used as the primary depth cue instead of drop
-  shadows (a "printed field-guide card" feel; shadows are reserved for actual overlays like
-  modals).
+- **The grove** — date palms and leaf canopy. Deep grove greens, chlorophyll gradients and a
+  touch of date-gold give the palette its warmth.
+- **The viewfinder** — the moment the camera locks onto a leaf. Corner brackets, a sweeping scan
+  line and the "scan ring" gauge appear wherever the AI is looking, waiting or reporting.
+
+Behind everything sits a **topographic survey map**: procedurally generated contour rings (every
+fifth line heavier, like index contours on a real topo sheet) that turn very slowly over soft pools
+of light. It is the one ambient effect in the app, and it is frozen under reduced motion.
+
+## Color tokens
+All colors are CSS variables holding RGB channels (`src/index.css`) mapped in
+`tailwind.config.ts`, so opacity modifiers (`bg-primary/20`) work and the entire app re-themes by
+toggling the `dark` class on `<html>`.
+
+| Token | Light | Dark | Role |
+|---|---|---|---|
+| `canvas` | `#F2F6F3` morning mist | `#05130E` grove at night | page background |
+| `surface` | `#FFFFFF` | `#0C2119` | glass panels (used at 55–72% opacity) |
+| `ink` / `muted` | `#0D241B` / `#546B60` | `#E5F1EA` / `#8CA699` | text |
+| `primary` | `#158054` chlorophyll | `#38C884` | actions, active states, data |
+| `sprout` | `#7ED957` | `#8CE664` | highlights, scan line, gradient ends |
+| `accent` | `#D9A33B` date gold | `#E9B752` | brand mark detail, weather, tips |
+| `grove` | `#093426` | `#07281D` | dark hero panels |
+
+**Severity colors stay functional.** `mild` (wheat), `moderate` (ochre) and `severe` (rust) are
+only ever used for real Mild / Moderate / Severe data — badges, the severity ring, the affected-area
+bar, pest confidence — never as decoration.
+
+The brand gradient (`.bg-brand`, `#22A56C → #0A5A3B`) is used for primary buttons, the logo mark,
+avatars and the latest data point in charts.
 
 ## Typography
-- **Fraunces** (display/headings) — a warm serif with real character (variable optical size),
-  giving page titles and numerals an "almanac/seed-catalog" feel rather than generic
-  sans-everywhere.
-- **IBM Plex Sans / IBM Plex Sans Arabic** (body) — a genuine bilingual pairing, not a decorative
-  choice: switching locale swaps to a true companion typeface in the same family, so Arabic and
-  English content look visually consistent rather than Arabic being an afterthought rendered in a
-  mismatched fallback font.
-- **IBM Plex Mono** (data) — used specifically for confidence percentages, dates, and counts,
-  reinforcing the "instrument reading" nature of diagnostic numbers.
+- **Readex Pro** (variable) — headings and numbers. Designed for Arabic *and* Latin, so English
+  and Arabic headings share one voice instead of Arabic falling back to a system serif.
+- **IBM Plex Sans / IBM Plex Sans Arabic** — body text, a true bilingual pair.
+- Numbers use tabular figures (`font-data tabular-nums`) so readings line up.
+- Fonts are self-hosted via `@fontsource` (no Google Fonts request — works on weak connections).
 
-## Signature Motif: the Scan Ring
-`components/ui/ProgressRing.tsx` is the one recurring, memorable element — a radial gauge used for
-confidence % (Dashboard stat, Diagnosis Result), severity (Diagnosis Result), and the scanning
-animation during AI analysis (Scan page). It is functional in every appearance (always bound to
-real data), never purely decorative, and ties the whole app together visually.
+## Surfaces & shape
+- `.glass` — translucent surface with backdrop blur, hairline border and a top highlight.
+- Radius encodes hierarchy: panels `1.5rem`, inner items `1rem`, controls `0.75rem`, chips full.
+- `.ring-gradient` — gradient hairline border for the one highlighted panel per screen (the result
+  hero, the AI analysis).
+- Shadows are tinted with the grove color, never neutral grey.
+
+## Motion
+Motion answers the person, or orchestrates one moment per page:
+
+- **Buttons**: press scales to 97%; a ripple spreads from the exact press point; on hover the
+  button lifts 2px, its glow deepens and a sheen sweeps across; trailing arrows nudge forward
+  (mirrored in RTL).
+- **Navigation**: a single pill glides between sidebar items, tabs and admin sections
+  (`useSlidingIndicator`) instead of each item blinking on/off.
+- **Page entrance**: direct children of `.stagger` rise in one after another — once per page.
+- **Data**: rings sweep from zero while the number counts up; bars grow from their baseline;
+  the sparkline draws itself.
+- **AI work**: the scan ring, the scan line and the viewfinder brackets.
+- Entrance keyframes end on `transform: none` so finished animations never trap `position: fixed`
+  children; modals are additionally portalled to `<body>`.
+- Everything respects `prefers-reduced-motion`.
 
 ## Layout
-- **Desktop**: fixed left sidebar (icon + label nav) + card-based main content — a utility-app
-  pattern, not a hero-driven landing page.
-- **Mobile**: bottom tab bar, thumb-reachable, since the primary action (scanning) happens
-  outdoors, often one-handed.
-- **RTL**: `dir="rtl"` is set on `<html>` when Arabic is active; all layout uses logical Tailwind
-  properties (`ps-`/`pe-`/`start-`/`end-` instead of `pl-`/`pr-`/`left-`/`right-`) so the mirrored
-  layout is correct, not just text-direction-flipped.
+- **Desktop**: floating glass sidebar (logo, nav, theme + language + logout, user card) and a
+  `max-w-6xl` content column.
+- **Mobile**: glass top bar with theme/language toggles; floating bottom bar with a raised,
+  pulsing **Scan** button in the middle — the primary action, in thumb reach.
+- **RTL**: logical properties throughout (`ps-`, `start-`, `rounded-ss-`…); directional icons use
+  `.flip-rtl`; free text that comes from the API uses `dir="auto"` so English content stays readable
+  inside the Arabic UI.
+
+## Themes
+Light and dark are both first-class. The initial theme follows the OS, the toggle (sidebar,
+mobile top bar, sign-in screen, Profile → Appearance) remembers the choice, and an inline script in
+`index.html` applies theme and direction before first paint.

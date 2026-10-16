@@ -27,6 +27,15 @@ const en = {
     passwordHint: "At least 8 characters, with an uppercase letter and a number.",
     loginError: "That email or password isn't right.",
     genericError: "Something went wrong. Please try again.",
+    heroBody: "Point your camera at a leaf. AgriGuard identifies the plant, diagnoses disease and pests, and tells you exactly what to do next — organic or chemical treatment, prevention, and weather-aware timing.",
+    heroCrops: "Supporting 17 crops, from tomato to date palm.",
+    featureCrops: "17 crops",
+    featureWeather: "Weather-aware advice",
+    featureReports: "PDF reports",
+    exampleScan: "Example scan",
+    examplePlant: "Tomato",
+    exampleDisease: "Early blight",
+    invalidEmail: "Enter a valid email address.",
   },
 
   dashboard: {
@@ -41,6 +50,12 @@ const en = {
     noScansYet: "No scans yet",
     noScansYetBody: "Scan your first plant to see your diagnosis history and trends here.",
     scanNow: "Scan a plant",
+    welcome: "Welcome back, {name}",
+    subtitle: "Here's how your crops have been doing.",
+    healthRate: "Healthy rate",
+    healthRateBody: "{healthy} of {total} scans came back healthy.",
+    scanCtaTitle: "Spotted something on a leaf?",
+    scanCtaBody: "Take a photo to get a diagnosis, a treatment plan and weather-aware timing.",
   },
 
   scan: {
@@ -59,6 +74,12 @@ const en = {
     unrecognized: "We couldn't identify this plant",
     unrecognizedBody: "Try retaking the photo with the leaf centered, in good light, and filling the frame.",
     tryAgain: "Try again",
+    dropHere: "Drop the photo to upload",
+    formats: "JPG, PNG or WebP, up to 15MB",
+    tipsTitle: "For the clearest diagnosis",
+    tip1: "Fill the frame with the affected leaf",
+    tip2: "Shoot in daylight, away from harsh shadows",
+    tip3: "Hold steady so the spots are in focus",
   },
 
   result: {
@@ -114,6 +135,11 @@ const en = {
     aiUrgencyLow: "Low",
     aiUrgencyMedium: "Medium",
     aiUrgencyHigh: "High",
+    noAccess: "You don't have access to this diagnosis.",
+    backToHistory: "Back to history",
+    severityMild: "Mild",
+    severityModerate: "Moderate",
+    severitySevere: "Severe",
   },
 
   history: {
@@ -180,6 +206,22 @@ const en = {
     page: "Page",
     of: "of",
     unknownError: "An unexpected error occurred. Please try again.",
+    toggleTheme: "Switch theme",
+    lightMode: "Light",
+    darkMode: "Dark",
+    theme: "Appearance",
+  },
+
+  notFound: {
+    title: "Page not found",
+    body: "The page you're looking for doesn't exist or has moved.",
+    action: "Go to dashboard",
+  },
+
+  roles: {
+    farmer: "Farmer",
+    agronomist: "Agronomist",
+    admin: "Admin",
   },
 };
 

@@ -23,7 +23,7 @@ export default function RegisterPage() {
   const validate = (): boolean => {
     const errors: Record<string, string> = {};
     if (fullName.trim().length < 2) errors.full_name = t.common.required;
-    if (!isValidEmail(email)) errors.email = t.auth.passwordHint;
+    if (!isValidEmail(email)) errors.email = t.auth.invalidEmail;
     const pw = checkPasswordStrength(password);
     if (!pw.valid) errors.password = t.auth.passwordHint;
     setFieldErrors(errors);
@@ -59,15 +59,16 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="animate-fade-in">
-      <h1 className="font-display text-2xl font-semibold text-ink">{t.auth.registerTitle}</h1>
-      <p className="mt-1.5 text-sm text-muted">{t.auth.registerSubtitle}</p>
+    <div className="stagger">
+      <h1 className="font-display text-[1.75rem] font-semibold leading-tight text-ink">{t.auth.registerTitle}</h1>
+      <p className="mt-2 text-[0.95rem] text-muted">{t.auth.registerSubtitle}</p>
 
       <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4" noValidate>
         {formError && <Alert tone="error">{formError}</Alert>}
 
         <Input
           label={t.auth.fullName}
+          icon="profile"
           name="full_name"
           autoComplete="name"
           required
@@ -77,6 +78,7 @@ export default function RegisterPage() {
         />
         <Input
           label={t.auth.email}
+          icon="mail"
           type="email"
           name="email"
           autoComplete="email"
@@ -87,6 +89,7 @@ export default function RegisterPage() {
         />
         <Input
           label={t.auth.password}
+          icon="lock"
           type="password"
           name="password"
           autoComplete="new-password"
@@ -97,14 +100,14 @@ export default function RegisterPage() {
           hint={!fieldErrors.password ? t.auth.passwordHint : undefined}
         />
 
-        <Button type="submit" fullWidth isLoading={isSubmitting} className="mt-2">
+        <Button type="submit" size="lg" fullWidth isLoading={isSubmitting} iconEnd="arrowRight" className="mt-3">
           {t.auth.registerButton}
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-muted">
+      <p className="mt-7 text-center text-sm text-muted">
         {t.auth.haveAccount}{" "}
-        <Link to="/login" className="font-semibold text-primary hover:underline">
+        <Link to="/login" className="font-semibold text-primary underline-offset-4 transition-colors hover:text-primary-dark hover:underline">
           {t.auth.signIn}
         </Link>
       </p>

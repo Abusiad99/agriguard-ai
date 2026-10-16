@@ -1,126 +1,201 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useLocale } from "@/context/LocaleContext";
+import { Icon, type IconName } from "@/components/ui/Icon";
+import { LogoMark } from "@/components/ui/Logo";
+import { indicatorStyle, useSlidingIndicator } from "@/hooks/useSlidingIndicator";
+import { LocaleToggle, ThemeToggle } from "./Toggles";
 
-const ICONS = {
-  dashboard: (
-    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
-  ),
-  scan: (
-    <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
-  ),
-  history: (
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-  ),
-  profile: (
-    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-  ),
-  admin: (
-    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-  ),
-  logout: (
-    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0110.5 3h6a2.25 2.25 0 012.25 2.25v13.5A2.25 2.25 0 0116.5 21h-6a2.25 2.25 0 01-2.25-2.25V15m-3 0l-3-3m0 0l3-3m-3 3H15" />
-  ),
-};
+interface NavItem {
+  key: string;
+  to: string;
+  label: string;
+  icon: IconName;
+}
 
-function Icon({ path, className = "h-5 w-5" }: { path: React.ReactNode; className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" aria-hidden="true">
-      {path}
-    </svg>
-  );
+/** Which nav item owns the current URL (a diagnosis detail belongs to History). */
+function activeKeyFor(pathname: string): string {
+  if (pathname.startsWith("/diagnoses")) return "history";
+  return pathname.split("/")[1] ?? "";
 }
 
 export function AppShell() {
   const { user, logout, hasRole } = useAuth();
-  const { t, locale, setLocale } = useLocale();
+  const { t } = useLocale();
+  const { pathname } = useLocation();
+  const activeKey = activeKeyFor(pathname);
 
-  const navItems = [
-    { to: "/dashboard", label: t.nav.dashboard, icon: ICONS.dashboard },
-    { to: "/scan", label: t.nav.scan, icon: ICONS.scan },
-    { to: "/history", label: t.nav.history, icon: ICONS.history },
-    { to: "/profile", label: t.nav.profile, icon: ICONS.profile },
+  const navItems: NavItem[] = [
+    { key: "dashboard", to: "/dashboard", label: t.nav.dashboard, icon: "dashboard" },
+    { key: "scan", to: "/scan", label: t.nav.scan, icon: "camera" },
+    { key: "history", to: "/history", label: t.nav.history, icon: "history" },
+    { key: "profile", to: "/profile", label: t.nav.profile, icon: "profile" },
   ];
   if (hasRole("admin", "agronomist")) {
-    navItems.push({ to: "/admin", label: t.nav.admin, icon: ICONS.admin });
+    navItems.push({ key: "admin", to: "/admin", label: t.nav.admin, icon: "admin" });
   }
 
-  const linkClasses = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-3 rounded-card px-3.5 py-2.5 text-sm font-medium transition-colors
-     ${isActive ? "bg-primary-light text-primary-dark" : "text-muted hover:bg-canvas hover:text-ink"}`;
+  // New page → start at the top (the shell itself stays mounted between routes).
+  const section = pathname.split("/")[1];
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+  }, [pathname]);
+
+  const { containerRef, rect } = useSlidingIndicator<HTMLElement>(activeKey);
+  const roleLabel = user?.role ? t.roles[user.role] : "";
 
   return (
-    <div className="min-h-screen bg-canvas">
-      {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 start-0 hidden w-64 flex-col border-e border-line bg-surface px-4 py-6 lg:flex">
-        <div className="mb-8 flex items-center gap-2 px-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white">
-            <Icon path={ICONS.scan} className="h-5 w-5" />
-          </div>
-          <span className="font-display text-lg font-semibold text-ink">{t.app.name}</span>
-        </div>
+    <div className="min-h-screen">
+      {/* ---------- Desktop sidebar ---------- */}
+      <aside className="glass fixed inset-y-3 start-3 z-30 hidden w-[17rem] flex-col rounded-[1.75rem] p-4 lg:flex">
+        <Link to="/dashboard" className="mb-8 mt-1 flex items-center gap-3 rounded-2xl px-2 py-1">
+          <LogoMark />
+          <span className="font-display text-lg font-semibold tracking-tight text-ink">{t.app.name}</span>
+        </Link>
 
-        <nav className="flex flex-1 flex-col gap-1">
-          {navItems.map((item) => (
-            <NavLink key={item.to} to={item.to} className={linkClasses}>
-              <Icon path={item.icon} />
-              {item.label}
-            </NavLink>
-          ))}
+        <nav ref={containerRef} className="relative flex flex-1 flex-col gap-1">
+          {/* The active pill glides between items rather than blinking on/off. */}
+          <span
+            aria-hidden="true"
+            className="absolute rounded-2xl bg-primary/10 ring-1 ring-inset ring-primary/15 transition-[transform,height,width,opacity] duration-500 ease-out-expo dark:bg-primary/[0.12]"
+            style={indicatorStyle(rect)}
+          >
+            <span className="absolute inset-y-3 start-0 w-1 rounded-full bg-primary shadow-[0_0_12px_rgb(var(--c-primary))]" />
+          </span>
+          {navItems.map((item) => {
+            const isActive = activeKey === item.key;
+            return (
+              <Link
+                key={item.key}
+                to={item.to}
+                data-indicator-item
+                data-active={isActive}
+                aria-current={isActive ? "page" : undefined}
+                className={`group relative z-[1] flex items-center gap-3 rounded-2xl px-3.5 py-3 text-[0.95rem] font-medium transition-colors duration-300
+                  ${isActive ? "text-primary-dark" : "text-muted hover:text-ink"}`}
+              >
+                <Icon
+                  name={item.icon}
+                  className={`h-5 w-5 transition-transform duration-300 ease-spring group-hover:scale-110 ${isActive ? "text-primary" : ""}`}
+                />
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
 
-        <div className="flex flex-col gap-3 border-t border-line pt-4">
-          <button
-            onClick={() => setLocale(locale === "en" ? "ar" : "en")}
-            className="flex items-center gap-3 rounded-card px-3.5 py-2 text-sm font-medium text-muted hover:bg-canvas hover:text-ink"
-          >
-            <span className="flex h-5 w-5 items-center justify-center text-xs font-bold">
-              {locale === "en" ? "AR" : "EN"}
-            </span>
-            {locale === "en" ? t.profile.arabic : t.profile.english}
-          </button>
-          <div className="flex items-center gap-3 px-3.5 py-1">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-light text-sm font-semibold text-primary-dark">
-              {user?.full_name?.charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-ink">{user?.full_name}</p>
-              <p className="truncate text-xs capitalize text-muted">{user?.role}</p>
-            </div>
+        <div className="mt-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between rounded-2xl bg-ink/[0.04] p-1">
+            <ThemeToggle />
+            <LocaleToggle />
+            <button
+              type="button"
+              onClick={() => void logout()}
+              aria-label={t.nav.logout}
+              title={t.nav.logout}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-muted transition-all duration-300 ease-spring hover:-translate-y-0.5 hover:bg-severity-severe-bg hover:text-severity-severe active:scale-90"
+            >
+              <Icon name="logout" className="flip-rtl h-5 w-5" />
+            </button>
           </div>
-          <button
-            onClick={() => void logout()}
-            className="flex items-center gap-3 rounded-card px-3.5 py-2.5 text-sm font-medium text-muted hover:bg-severity-severe-bg hover:text-severity-severe"
-          >
-            <Icon path={ICONS.logout} />
-            {t.nav.logout}
-          </button>
+          <Link to="/profile" className="flex items-center gap-3 rounded-2xl p-2 transition-colors hover:bg-ink/[0.04]">
+            <Avatar name={user?.full_name} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-ink">{user?.full_name}</p>
+              <p className="truncate text-xs text-muted">{roleLabel}</p>
+            </div>
+          </Link>
         </div>
       </aside>
 
-      {/* Main content */}
-      <div className="lg:ps-64">
-        <main className="mx-auto max-w-5xl px-4 py-6 pb-24 sm:px-6 sm:py-8 lg:pb-8">
-          <Outlet />
+      {/* ---------- Mobile top bar ---------- */}
+      <header className="sticky top-0 z-30 px-3 pt-3 lg:hidden">
+        <div className="glass flex h-14 items-center justify-between rounded-2xl ps-2 pe-1.5">
+          <Link to="/dashboard" className="flex items-center gap-2.5">
+            <LogoMark className="h-9 w-9" />
+            <span className="font-display text-base font-semibold text-ink">{t.app.name}</span>
+          </Link>
+          <div className="flex items-center">
+            <ThemeToggle />
+            <LocaleToggle />
+          </div>
+        </div>
+      </header>
+
+      {/* ---------- Main content ---------- */}
+      <div className="lg:ps-[18.5rem]">
+        <main className="mx-auto max-w-6xl px-4 pb-32 pt-6 sm:px-6 sm:pt-8 lg:px-10 lg:pb-12 lg:pt-10">
+          <div key={section} className="animate-fade-in">
+            <Outlet />
+          </div>
         </main>
       </div>
 
-      {/* Mobile bottom tab bar */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-surface px-2 py-1.5 lg:hidden">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              `flex flex-1 flex-col items-center gap-0.5 rounded-card py-2 text-xs font-medium
-               ${isActive ? "text-primary" : "text-muted"}`
-            }
-          >
-            <Icon path={item.icon} className="h-6 w-6" />
-            {item.label}
-          </NavLink>
-        ))}
+      {/* ---------- Mobile bottom bar with a raised scan button ---------- */}
+      <nav
+        className="glass fixed inset-x-3 bottom-3 z-40 flex items-end justify-around rounded-[1.5rem] px-1 pb-2 pt-1.5 lg:hidden"
+        style={{ marginBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {navItems
+          .filter((i) => i.key !== "scan")
+          .slice(0, 2)
+          .map((item) => (
+            <MobileTab key={item.key} item={item} isActive={activeKey === item.key} />
+          ))}
+        <Link
+          to="/scan"
+          aria-label={t.nav.scan}
+          aria-current={activeKey === "scan" ? "page" : undefined}
+          className="group relative -mt-7 flex flex-1 flex-col items-center gap-1"
+        >
+          <span className="relative flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-glow-lg ring-4 ring-canvas transition-transform duration-300 ease-spring group-active:scale-90">
+            <span className="absolute inset-0 animate-pulse-ring rounded-full border-2 border-primary/50" />
+            <Icon name="camera" className="h-6 w-6" />
+          </span>
+          <span className={`whitespace-nowrap text-[10.5px] font-semibold ${activeKey === "scan" ? "text-primary" : "text-muted"}`}>{t.nav.scan}</span>
+        </Link>
+        {navItems
+          .filter((i) => i.key !== "scan")
+          .slice(2)
+          .map((item) => (
+            <MobileTab key={item.key} item={item} isActive={activeKey === item.key} />
+          ))}
       </nav>
     </div>
+  );
+}
+
+function MobileTab({ item, isActive }: { item: NavItem; isActive: boolean }) {
+  return (
+    <Link
+      to={item.to}
+      aria-current={isActive ? "page" : undefined}
+      className={`group relative flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-0.5 pt-2 text-[10.5px] font-medium transition-colors
+        ${isActive ? "text-primary" : "text-muted"}`}
+    >
+      <span
+        className={`flex h-8 w-12 items-center justify-center rounded-full transition-all duration-300 ease-spring group-active:scale-90
+          ${isActive ? "bg-primary/15 scale-100" : "scale-95"}`}
+      >
+        <Icon name={item.icon} className="h-[22px] w-[22px]" />
+      </span>
+      <span className="whitespace-nowrap">{item.label}</span>
+    </Link>
+  );
+}
+
+export function Avatar({ name, size = "md" }: { name?: string | null; size?: "md" | "lg" }) {
+  const initials = (name ?? "?")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p.charAt(0).toUpperCase())
+    .join("");
+  const dims = size === "lg" ? "h-16 w-16 text-xl rounded-[1.25rem]" : "h-10 w-10 text-sm rounded-xl";
+  return (
+    <span className={`inline-flex shrink-0 items-center justify-center bg-brand font-display font-semibold text-white shadow-glow ${dims}`}>
+      {initials}
+    </span>
   );
 }

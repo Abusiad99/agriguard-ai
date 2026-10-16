@@ -1,10 +1,10 @@
-import { Spinner } from "./Spinner";
+import { ScanRing } from "./Spinner";
 
-export function PageLoader({ label = "Loading…" }: { label?: string }) {
+export function PageLoader({ label = "Loading…", fullScreen = false }: { label?: string; fullScreen?: boolean }) {
   return (
-    <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3">
-      <Spinner className="h-8 w-8 text-primary" />
-      <p className="text-sm text-muted">{label}</p>
+    <div className={`flex ${fullScreen ? "min-h-screen" : "min-h-[40vh]"} flex-col items-center justify-center gap-5 animate-fade-in`} role="status" aria-live="polite">
+      <ScanRing size={68} />
+      <p className="text-sm font-medium text-muted">{label}</p>
     </div>
   );
 }

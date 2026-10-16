@@ -7,7 +7,9 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { Input } from "@/components/ui/Input";
+import { Input, Textarea } from "@/components/ui/Input";
+import { IconTile, PageHeader } from "@/components/ui/Card";
+import { Pagination } from "@/components/ui/Pagination";
 import { Alert } from "@/components/ui/Alert";
 import type { DiseaseResponseSchema } from "@/types/api";
 import { ApiError } from "@/types/api";
@@ -113,85 +115,85 @@ export default function AdminDiseasesPage() {
   };
 
   return (
-    <div className="flex flex-col gap-5 animate-fade-in">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-semibold text-ink">{t.admin.diseasesTitle}</h1>
-        <Button onClick={openCreate}>{t.admin.addDisease}</Button>
-      </div>
+    <div className="flex flex-col gap-6 stagger">
+      <PageHeader
+        title={t.admin.diseasesTitle}
+        actions={
+          <Button icon="plus" onClick={openCreate}>
+            {t.admin.addDisease}
+          </Button>
+        }
+      />
 
       {diseases.status === "loading" && <PageLoader label={t.common.loading} />}
       {diseases.status === "error" && <ErrorState message={errorMessage(diseases.error)} onRetry={diseases.refetch} />}
 
       {diseases.status === "success" && diseases.data.items.length === 0 && (
-        <EmptyState title="No diseases yet" body="Add the first knowledge-base entry to get started." />
+        <EmptyState iconName="book" title="No diseases yet" body="Add the first knowledge-base entry to get started." />
       )}
 
       {diseases.status === "success" && diseases.data.items.length > 0 && (
-        <div className="flex flex-col gap-3">
+        <div className="grid gap-4 md:grid-cols-2 stagger">
           {diseases.data.items.map((d) => (
-            <div key={d.id} className="flex items-start justify-between gap-4 rounded-card border border-line bg-surface p-4">
-              <div className="min-w-0 flex-1">
-                <p className="font-display font-semibold text-ink">
-                  {d.name} <span className="ms-1 text-xs font-normal text-muted">v{d.version}</span>
-                </p>
-                {d.disease_type && <p className="text-xs uppercase tracking-wide text-muted">{d.disease_type}</p>}
-                <p className="mt-1.5 line-clamp-2 text-sm text-ink">{d.description}</p>
+            <div key={d.id} className="glass flex flex-col gap-4 rounded-panel p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <IconTile name={d.disease_type === "pest" ? "bug" : "microbe"} />
+                  <div className="min-w-0">
+                    <p className="truncate font-display text-[1.05rem] font-semibold text-ink">{d.name}</p>
+                    {d.disease_type && <p className="text-xs capitalize text-muted">{d.disease_type}</p>}
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-lg bg-ink/[0.05] px-2 py-1 font-data text-xs font-medium text-muted">v{d.version}</span>
               </div>
-              <Button variant="secondary" size="sm" onClick={() => openEdit(d)}>
-                {t.admin.editDisease}
-              </Button>
+              <p className="line-clamp-2 flex-1 text-sm leading-relaxed text-muted">{d.description}</p>
+              <div>
+                <Button variant="glass" size="sm" icon="pencil" onClick={() => openEdit(d)}>
+                  {t.admin.editDisease}
+                </Button>
+              </div>
             </div>
           ))}
         </div>
       )}
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editing ? t.admin.editDisease : t.admin.addDisease}>
-        <div className="flex flex-col gap-3.5">
+        <div className="flex flex-col gap-4">
           {formError && <Alert tone="error">{formError}</Alert>}
           <Input
             label={t.admin.plantName}
+            name="plant_canonical_name"
             placeholder="tomato, date_palm, apple…"
             value={form.plant_canonical_name}
             onChange={(e) => setForm({ ...form, plant_canonical_name: e.target.value })}
           />
-          <Input
-            label={t.admin.diseaseName}
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
+          <Input label={t.admin.diseaseName} name="disease_name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <Input
             label="Disease type"
+            name="disease_type"
             placeholder="fungal, bacterial, pest…"
             value={form.disease_type}
             onChange={(e) => setForm({ ...form, disease_type: e.target.value })}
           />
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-ink">{t.admin.description}</label>
-            <textarea
-              className="rounded-card border border-line bg-surface px-3.5 py-2.5 text-sm text-ink focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              rows={3}
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-            />
-          </div>
-          <Input
-            label="Symptoms (comma-separated)"
-            value={form.symptoms}
-            onChange={(e) => setForm({ ...form, symptoms: e.target.value })}
+          <Textarea
+            label={t.admin.description}
+            id="disease_description"
+            rows={3}
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
-          <Input
-            label="Causes (comma-separated)"
-            value={form.causes}
-            onChange={(e) => setForm({ ...form, causes: e.target.value })}
-          />
+          <Input label="Symptoms (comma-separated)" name="symptoms" value={form.symptoms} onChange={(e) => setForm({ ...form, symptoms: e.target.value })} />
+          <Input label="Causes (comma-separated)" name="causes" value={form.causes} onChange={(e) => setForm({ ...form, causes: e.target.value })} />
           <Input
             label={`Transmission method (${t.common.optional})`}
+            name="transmission_method"
             value={form.transmission_method}
             onChange={(e) => setForm({ ...form, transmission_method: e.target.value })}
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
               label={`Recovery probability % (${t.common.optional})`}
+              name="recovery_probability"
               type="number"
               min={0}
               max={100}
@@ -200,6 +202,7 @@ export default function AdminDiseasesPage() {
             />
             <Input
               label={`Recovery time (${t.common.optional})`}
+              name="estimated_recovery_time"
               placeholder="2-3 weeks"
               value={form.estimated_recovery_time}
               onChange={(e) => setForm({ ...form, estimated_recovery_time: e.target.value })}
@@ -210,26 +213,14 @@ export default function AdminDiseasesPage() {
             <Button variant="ghost" onClick={() => setIsModalOpen(false)}>
               {t.admin.cancel}
             </Button>
-            <Button isLoading={isSaving} onClick={() => void handleSave()}>
+            <Button icon="check" isLoading={isSaving} onClick={() => void handleSave()}>
               {t.admin.save}
             </Button>
           </div>
         </div>
       </Modal>
 
-      {diseases.status === "success" && diseases.data.total_pages > 1 && (
-        <div className="flex items-center justify-center gap-3">
-          <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-            {t.common.back}
-          </Button>
-          <span className="text-sm text-muted">
-            {t.common.page} {diseases.data.page} {t.common.of} {diseases.data.total_pages}
-          </span>
-          <Button variant="ghost" size="sm" disabled={page >= diseases.data.total_pages} onClick={() => setPage((p) => p + 1)}>
-            {t.common.next}
-          </Button>
-        </div>
-      )}
+      {diseases.status === "success" && <Pagination page={page} totalPages={diseases.data.total_pages} onChange={setPage} />}
     </div>
   );
 }

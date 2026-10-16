@@ -1,21 +1,24 @@
+import { useState } from "react";
 import type { AiAnalysisSchema, AnalysisUrgency, CvConsistency, RecommendationSchema, SeverityLevel, TreatmentSchema, WeatherSchema } from "@/types/api";
 import { Badge, severityTone } from "@/components/ui/Badge";
 import { Alert } from "@/components/ui/Alert";
+import { Icon, type IconName } from "@/components/ui/Icon";
+import { Tabs } from "@/components/ui/Tabs";
 import { useLocale } from "@/context/LocaleContext";
-
-const SEVERITY_COLOR: Record<SeverityLevel, string> = {
-  mild: "#D8A73D",
-  moderate: "#C8722A",
-  severe: "#A13D2C",
-};
+import { SEVERITY_COLOR, useSeverityLabel } from "./severity";
 
 export function SeverityBadge({ level }: { level?: SeverityLevel | null }) {
+  const label = useSeverityLabel();
   if (!level) return null;
-  return <Badge tone={severityTone(level)}>{level.charAt(0).toUpperCase() + level.slice(1)}</Badge>;
+  return (
+    <Badge tone={severityTone(level)} pulse={level === "severe"} className="px-3 py-1.5 text-sm">
+      {label(level)}
+    </Badge>
+  );
 }
 
-/** Affected vs. healthy area, shown as a segmented horizontal bar — the visual
- * required for FR-RESULT-1's "Affected Area % / Healthy Area %" fields. */
+/** Affected vs. healthy area as one segmented bar — the visual required for
+ * FR-RESULT-1's "Affected Area % / Healthy Area %" fields. */
 export function AffectedAreaBar({
   affectedPct,
   healthyPct,
@@ -27,19 +30,27 @@ export function AffectedAreaBar({
 }) {
   const { t } = useLocale();
   if (affectedPct == null || healthyPct == null) return null;
-  const color = severity ? SEVERITY_COLOR[severity] : "#C8722A";
+  const color = severity ? SEVERITY_COLOR[severity] : SEVERITY_COLOR.moderate;
 
   return (
     <div>
-      <div className="flex h-3 w-full overflow-hidden rounded-full bg-line/50">
-        <div style={{ width: `${affectedPct}%`, backgroundColor: color }} className="transition-all duration-500" />
+      <div className="flex h-3 w-full gap-1 overflow-hidden rounded-full">
+        <div
+          style={{ width: `${affectedPct}%`, backgroundColor: color }}
+          className="h-full origin-start animate-grow-x rounded-full shadow-[0_0_12px_-2px_currentColor] [animation-delay:500ms]"
+        />
+        <div style={{ width: `${healthyPct}%` }} className="h-full origin-start animate-grow-x rounded-full bg-primary/70 [animation-delay:700ms]" />
       </div>
-      <div className="mt-2 flex justify-between text-xs text-muted">
-        <span>
-          {t.result.affectedArea}: <strong className="font-data text-ink">{affectedPct.toFixed(1)}%</strong>
+      <div className="mt-3 flex flex-wrap justify-between gap-2 text-sm text-muted">
+        <span className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+          {t.result.affectedArea}
+          <strong className="font-data font-semibold tabular-nums text-ink">{affectedPct.toFixed(1)}%</strong>
         </span>
-        <span>
-          {t.result.healthyArea}: <strong className="font-data text-ink">{healthyPct.toFixed(1)}%</strong>
+        <span className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-primary/70" />
+          {t.result.healthyArea}
+          <strong className="font-data font-semibold tabular-nums text-ink">{healthyPct.toFixed(1)}%</strong>
         </span>
       </div>
     </div>
@@ -49,21 +60,32 @@ export function AffectedAreaBar({
 export function WeatherCard({ weather }: { weather?: WeatherSchema | null }) {
   const { t } = useLocale();
   if (!weather || weather.temperature_c == null) {
-    return <p className="text-sm text-muted">{t.result.weatherUnavailable}</p>;
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted">
+        <Icon name="info" className="h-4 w-4" />
+        {t.result.weatherUnavailable}
+      </p>
+    );
   }
-  const items = [
-    { label: t.result.temperature, value: weather.temperature_c != null ? `${weather.temperature_c}°C` : "—" },
-    { label: t.result.humidity, value: weather.humidity_pct != null ? `${weather.humidity_pct}%` : "—" },
-    { label: t.result.wind, value: weather.wind_speed_kmh != null ? `${weather.wind_speed_kmh} km/h` : "—" },
-    { label: t.result.rain, value: weather.rain_probability_pct != null ? `${weather.rain_probability_pct}%` : "—" },
-    { label: t.result.uvIndex, value: weather.uv_index != null ? weather.uv_index : "—" },
+  const items: { icon: IconName; label: string; value: string | number }[] = [
+    { icon: "thermometer", label: t.result.temperature, value: weather.temperature_c != null ? `${weather.temperature_c}°C` : "—" },
+    { icon: "droplet", label: t.result.humidity, value: weather.humidity_pct != null ? `${weather.humidity_pct}%` : "—" },
+    { icon: "wind", label: t.result.wind, value: weather.wind_speed_kmh != null ? `${weather.wind_speed_kmh} km/h` : "—" },
+    { icon: "rain", label: t.result.rain, value: weather.rain_probability_pct != null ? `${weather.rain_probability_pct}%` : "—" },
+    { icon: "sun", label: t.result.uvIndex, value: weather.uv_index != null ? weather.uv_index : "—" },
   ];
   return (
-    <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-      {items.map((item) => (
-        <div key={item.label} className="rounded-card bg-canvas px-3 py-2.5 text-center">
-          <dt className="text-xs text-muted">{item.label}</dt>
-          <dd className="font-data mt-0.5 text-sm font-semibold text-ink">{item.value}</dd>
+    <dl className="grid grid-cols-2 gap-2.5">
+      {items.map((item, i) => (
+        <div
+          key={item.label}
+          className={`flex items-center gap-3 rounded-2xl bg-ink/[0.035] px-3.5 py-3 ${i === 0 ? "col-span-2 bg-gradient-to-br from-accent/15 to-transparent" : ""}`}
+        >
+          <Icon name={item.icon} className={`shrink-0 ${i === 0 ? "h-7 w-7 text-accent-dark dark:text-accent" : "h-5 w-5 text-primary"}`} />
+          <div className="min-w-0">
+            <dt className="truncate text-xs text-muted">{item.label}</dt>
+            <dd className={`font-data font-semibold tabular-nums text-ink ${i === 0 ? "text-2xl" : "text-sm"}`}>{item.value}</dd>
+          </div>
         </div>
       ))}
     </dl>
@@ -73,56 +95,115 @@ export function WeatherCard({ weather }: { weather?: WeatherSchema | null }) {
 export function RecommendationList({ recommendation }: { recommendation?: RecommendationSchema | null }) {
   const { t } = useLocale();
   if (!recommendation) return null;
-  const items = [
-    { label: t.result.irrigation, value: recommendation.irrigation_advice },
-    { label: t.result.spraying, value: recommendation.spraying_advice },
-    { label: t.result.fertilizer, value: recommendation.fertilizer_advice },
-  ].filter((i) => i.value);
+  const all: { icon: IconName; label: string; value?: string | null }[] = [
+    { icon: "droplet", label: t.result.irrigation, value: recommendation.irrigation_advice },
+    { icon: "spray", label: t.result.spraying, value: recommendation.spraying_advice },
+    { icon: "sprout", label: t.result.fertilizer, value: recommendation.fertilizer_advice },
+  ];
+  const items = all.filter((i) => i.value);
 
   if (items.length === 0) return null;
 
   return (
-    <ul className="flex flex-col gap-2.5">
+    <ul className="flex flex-col gap-3">
       {items.map((item) => (
-        <li key={item.label} className="flex gap-3 rounded-card bg-canvas px-3.5 py-3 text-sm">
-          <span className="shrink-0 font-semibold text-primary-dark">{item.label}:</span>
-          <span className="text-ink">{item.value}</span>
+        <li key={item.label} className="flex gap-3.5 rounded-2xl border border-line/80 bg-surface/50 p-4 dark:bg-surface/30">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Icon name={item.icon} className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink">{item.label}</p>
+            <p dir="auto" className="mt-0.5 text-start text-sm leading-relaxed text-muted">{item.value}</p>
+          </div>
         </li>
       ))}
     </ul>
   );
 }
 
+const TREATMENT_ICON: Record<string, IconName> = {
+  organic: "leaf",
+  chemical: "beaker",
+  biological: "microbe",
+};
+
 export function TreatmentSection({ treatment }: { treatment?: TreatmentSchema | null }) {
   const { t } = useLocale();
-  if (!treatment) return null;
-
-  const groups = [
-    { key: "organic", label: t.result.organic, data: treatment.organic },
-    { key: "chemical", label: t.result.chemical, data: treatment.chemical },
-    { key: "biological", label: t.result.biological, data: treatment.biological },
-  ].filter((g) => g.data);
+  const groups = treatment
+    ? [
+        { key: "organic", label: t.result.organic, data: treatment.organic },
+        { key: "chemical", label: t.result.chemical, data: treatment.chemical },
+        { key: "biological", label: t.result.biological, data: treatment.biological },
+      ].filter((g) => g.data)
+    : [];
+  const [active, setActive] = useState(groups[0]?.key ?? "organic");
 
   if (groups.length === 0) return null;
+  const current = groups.find((g) => g.key === active) ?? groups[0];
 
   return (
     <div className="flex flex-col gap-4">
-      {groups.map((group) => (
-        <div key={group.key} className="rounded-card border border-line px-4 py-3.5">
-          <p className="mb-1.5 font-semibold text-primary-dark">{group.label}</p>
-          <p className="text-sm text-ink">{group.data?.instructions}</p>
-          {group.data?.safety_notes && (
-            <p className="mt-2 text-xs text-muted">
+      {groups.length > 1 && (
+        <Tabs
+          tabs={groups.map((g) => ({ key: g.key, label: g.label, icon: <Icon name={TREATMENT_ICON[g.key]} className="h-4 w-4" /> }))}
+          active={current.key}
+          onChange={setActive}
+        />
+      )}
+      <div key={current.key} className="rounded-2xl border border-line/80 bg-surface/50 p-5 animate-fade-in dark:bg-surface/30">
+        <p className="flex items-center gap-2 font-semibold text-primary-dark">
+          <Icon name={TREATMENT_ICON[current.key]} className="h-5 w-5 text-primary" />
+          {current.label}
+        </p>
+        <p dir="auto" className="mt-2.5 text-start text-[0.95rem] leading-relaxed text-ink">{current.data?.instructions}</p>
+        {current.data?.safety_notes && (
+          <p className="mt-4 flex items-start gap-2.5 rounded-xl bg-severity-mild-bg/70 px-3.5 py-3 text-sm text-severity-mild">
+            <Icon name="warning" className="mt-px h-[18px] w-[18px] shrink-0" />
+            <span>
               <span className="font-semibold">{t.result.safetyNotes}: </span>
-              {group.data.safety_notes}
-            </p>
-          )}
-          {group.data?.source_citation && (
-            <p className="mt-1 text-xs text-muted italic">{group.data.source_citation}</p>
-          )}
-        </div>
-      ))}
+              <span dir="auto">{current.data.safety_notes}</span>
+            </span>
+          </p>
+        )}
+        {current.data?.source_citation && (
+          <p className="mt-3 flex items-center gap-2 text-xs text-muted">
+            <Icon name="book" className="h-4 w-4 shrink-0" />
+            <span dir="auto" className="italic">{current.data.source_citation}</span>
+          </p>
+        )}
+      </div>
     </div>
+  );
+}
+
+/** A list with a small leaf-green check, used for symptoms, causes and advice. */
+export function BulletList({ items, icon = "dot" }: { items: string[]; icon?: "dot" | "check" }) {
+  return (
+    <ul className="flex flex-col gap-2.5">
+      {items.map((item) => (
+        <li key={item} className="flex items-start gap-3 text-[0.95rem] leading-relaxed text-ink">
+          {icon === "check" ? (
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 10.5l3 3 7-7" />
+              </svg>
+            </span>
+          ) : (
+            <span className="mt-[0.6rem] h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+          )}
+          <span dir="auto" className="min-w-0 flex-1 text-start">{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function SubHeading({ children, icon }: { children: React.ReactNode; icon?: IconName }) {
+  return (
+    <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-primary-dark">
+      {icon && <Icon name={icon} className="h-4 w-4 text-primary" />}
+      {children}
+    </p>
   );
 }
 
@@ -170,65 +251,54 @@ export function AiAnalysisSection({ aiAnalysis }: { aiAnalysis?: AiAnalysisSchem
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={CONSISTENCY_TONE[a.cv_consistency]}>
           {t.result.aiConsistency}: {consistencyLabel[a.cv_consistency]}
         </Badge>
-        <Badge tone={URGENCY_TONE[a.urgency]}>
+        <Badge tone={URGENCY_TONE[a.urgency]} pulse={a.urgency === "high"}>
           {t.result.aiUrgency}: {urgencyLabel[a.urgency]}
         </Badge>
       </div>
 
-      <p className="text-sm text-ink">{a.diagnosis_explanation}</p>
+      <p dir="auto" className="border-s-2 border-primary/40 ps-4 text-start text-[0.98rem] leading-relaxed text-ink">{a.diagnosis_explanation}</p>
 
       {a.observed_symptoms.length > 0 && (
         <div>
-          <p className="mb-1.5 text-sm font-semibold text-primary-dark">{t.result.aiObservedSymptoms}</p>
-          <ul className="list-disc ps-5 text-sm text-ink">
-            {a.observed_symptoms.map((s) => (
-              <li key={s}>{s}</li>
-            ))}
-          </ul>
+          <SubHeading icon="search">{t.result.aiObservedSymptoms}</SubHeading>
+          <BulletList items={a.observed_symptoms} />
         </div>
       )}
 
-      <div>
-        <p className="mb-1 text-sm font-semibold text-primary-dark">{t.result.aiConfidenceAssessment}</p>
-        <p className="text-sm text-ink">{a.confidence_assessment}</p>
-      </div>
-
-      <div>
-        <p className="mb-1 text-sm font-semibold text-primary-dark">{t.result.aiSeverityExplanation}</p>
-        <p className="text-sm text-ink">{a.severity_explanation}</p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <InsightBlock icon="target" title={t.result.aiConfidenceAssessment} body={a.confidence_assessment} />
+        <InsightBlock icon="chart" title={t.result.aiSeverityExplanation} body={a.severity_explanation} />
       </div>
 
       {a.treatment_guidance.length > 0 && (
         <div>
-          <p className="mb-1.5 text-sm font-semibold text-primary-dark">{t.result.aiTreatmentGuidance}</p>
-          <ul className="list-disc ps-5 text-sm text-ink">
-            {a.treatment_guidance.map((g) => (
-              <li key={g}>{g}</li>
-            ))}
-          </ul>
+          <SubHeading icon="beaker">{t.result.aiTreatmentGuidance}</SubHeading>
+          <BulletList items={a.treatment_guidance} icon="check" />
         </div>
       )}
 
       {a.prevention_guidance.length > 0 && (
         <div>
-          <p className="mb-1.5 text-sm font-semibold text-primary-dark">{t.result.aiPreventionGuidance}</p>
-          <ul className="list-disc ps-5 text-sm text-ink">
-            {a.prevention_guidance.map((g) => (
-              <li key={g}>{g}</li>
-            ))}
-          </ul>
+          <SubHeading icon="shieldCheck">{t.result.aiPreventionGuidance}</SubHeading>
+          <BulletList items={a.prevention_guidance} icon="check" />
         </div>
       )}
 
-      <div>
-        <p className="mb-1 text-sm font-semibold text-primary-dark">{t.result.aiEnvironmentalRisk}</p>
-        <p className="text-sm text-ink">{a.environmental_risk}</p>
-      </div>
+      <InsightBlock icon="rain" title={t.result.aiEnvironmentalRisk} body={a.environmental_risk} />
+    </div>
+  );
+}
+
+function InsightBlock({ icon, title, body }: { icon: IconName; title: string; body: string }) {
+  return (
+    <div className="rounded-2xl bg-ink/[0.035] p-4">
+      <SubHeading icon={icon}>{title}</SubHeading>
+      <p dir="auto" className="-mt-1 text-start text-sm leading-relaxed text-ink">{body}</p>
     </div>
   );
 }

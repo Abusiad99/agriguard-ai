@@ -1,49 +1,88 @@
 import { Outlet } from "react-router-dom";
 import { useLocale } from "@/context/LocaleContext";
+import { Icon, type IconName } from "@/components/ui/Icon";
+import { Logo, LogoMark } from "@/components/ui/Logo";
+import { ContourField } from "./AmbientBackground";
+import { ScanIllustration } from "./ScanIllustration";
+import { LocaleToggle, ThemeToggle } from "./Toggles";
 
 export function AuthLayout() {
-  const { t, locale, setLocale } = useLocale();
+  const { t } = useLocale();
+
+  const features: { icon: IconName; label: string }[] = [
+    { icon: "sprout", label: t.auth.featureCrops },
+    { icon: "rain", label: t.auth.featureWeather },
+    { icon: "document", label: t.auth.featureReports },
+  ];
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="hidden flex-col justify-between bg-primary-dark p-10 text-white lg:flex">
-        <div className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15">
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6} aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-            </svg>
+    <div className="grid min-h-screen lg:grid-cols-[1.08fr_1fr]">
+      {/* ---------- Hero: the grove at night, with a live example scan ---------- */}
+      <section className="relative m-3 hidden overflow-hidden rounded-[2rem] bg-grove-deep text-white shadow-elevate lg:flex lg:flex-col">
+        <div className="absolute inset-0 text-sprout/[0.16] [mask-image:radial-gradient(ellipse_at_center,transparent_10%,black_75%)]">
+          <ContourField variant="hero" />
+        </div>
+        <div className="grain absolute inset-0 [--grain-opacity:0.08]" aria-hidden="true" />
+        <div className="absolute -start-24 top-1/3 h-80 w-80 rounded-full bg-sprout/20 blur-[100px]" aria-hidden="true" />
+
+        <div className="relative flex flex-1 flex-col gap-8 p-10 xl:p-12">
+          <Logo name={t.app.name} tone="light" className="animate-fade-in" />
+
+          <div className="flex flex-1 items-center justify-center py-4">
+            <div className="w-[14.5rem] animate-rise-in [animation-delay:250ms] xl:w-[16.5rem]">
+              <ScanIllustration />
+            </div>
           </div>
-          <span className="font-display text-xl font-semibold">{t.app.name}</span>
+
+          <div className="max-w-lg animate-rise-in [animation-delay:120ms]">
+            <h2 className="text-balance font-display text-[2.35rem] font-semibold leading-[1.12] xl:text-[2.75rem]">{t.app.tagline}</h2>
+            <p className="mt-4 text-[1.02rem] leading-relaxed text-white/70">{t.auth.heroBody}</p>
+          </div>
+
+          <ul className="flex flex-wrap gap-2.5 animate-rise-in [animation-delay:450ms]">
+            {features.map((f) => (
+              <li
+                key={f.label}
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm text-white/85 backdrop-blur-md"
+              >
+                <Icon name={f.icon} className="h-4 w-4 text-sprout" />
+                {f.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* ---------- Form side ---------- */}
+      <section className="relative flex flex-col px-5 py-6 sm:px-10 lg:px-14">
+        <div className="flex items-center justify-between lg:justify-end">
+          <span className="flex items-center gap-2.5 lg:hidden">
+            <LogoMark className="h-9 w-9" />
+            <span className="font-display text-base font-semibold text-ink">{t.app.name}</span>
+          </span>
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <LocaleToggle variant="pill" className="ms-1" />
+          </div>
         </div>
 
-        <div>
-          <p className="font-display text-4xl font-medium leading-tight">{t.app.tagline}</p>
-          <p className="mt-4 max-w-sm text-primary-light/90">
-            Point your camera at a leaf. AgriGuard identifies the plant, diagnoses disease and pests,
-            and tells you exactly what to do next — organic or chemical treatment, prevention, and
-            weather-aware timing.
-          </p>
-        </div>
+        <div className="flex flex-1 items-center justify-center py-10">
+          <div className="w-full max-w-[26rem]">
+            {/* Compact hero for small screens */}
+            <div className="relative mb-8 overflow-hidden rounded-[1.75rem] bg-grove-deep p-6 text-white shadow-elevate lg:hidden">
+              <div className="absolute inset-0 text-sprout/[0.18]">
+                <ContourField variant="hero" />
+              </div>
+              <p className="relative text-balance font-display text-2xl font-semibold leading-snug">{t.app.tagline}</p>
+              <p className="relative mt-2 text-sm text-white/70">{t.auth.heroCrops}</p>
+            </div>
 
-        <p className="text-sm text-primary-light/70">
-          Supporting 17 crops, from tomato to date palm.
-        </p>
-      </div>
-
-      <div className="flex flex-col justify-center px-6 py-12 sm:px-12 lg:px-16">
-        <div className="mb-6 flex justify-end lg:hidden">
-          <button
-            onClick={() => setLocale(locale === "en" ? "ar" : "en")}
-            className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-muted"
-          >
-            {locale === "en" ? "العربية" : "English"}
-          </button>
+            <div className="glass rounded-[1.75rem] p-6 sm:p-8">
+              <Outlet />
+            </div>
+          </div>
         </div>
-        <div className="mx-auto w-full max-w-sm">
-          <Outlet />
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

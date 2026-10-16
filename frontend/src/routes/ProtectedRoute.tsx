@@ -6,7 +6,7 @@ export function ProtectedRoute() {
   const { isAuthenticated, isInitializing } = useAuth();
   const location = useLocation();
 
-  if (isInitializing) return <PageLoader />;
+  if (isInitializing) return <PageLoader fullScreen />;
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
