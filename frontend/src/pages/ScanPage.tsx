@@ -1,10 +1,12 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLocale } from "@/context/LocaleContext";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { Card } from "@/components/ui/Card";
-import { ProgressRing } from "@/components/ui/ProgressRing";
+import { Card, PageHeader } from "@/components/ui/Card";
+import { Icon, type IconName } from "@/components/ui/Icon";
+import { ScanRing } from "@/components/ui/Spinner";
+import { Switch } from "@/components/ui/Switch";
 import { scansApi } from "@/lib/endpoints/scans";
 import { ApiError, isUnrecognizedPlant } from "@/types/api";
 import { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES } from "@/utils/validators";
@@ -22,6 +24,7 @@ export default function ScanPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [attachLocation, setAttachLocation] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const resetToIdle = () => {
     setStage("idle");
@@ -46,6 +49,20 @@ export default function ScanPage() {
     setFile(selected);
     setPreviewUrl(URL.createObjectURL(selected));
     setStage("preview");
+  };
+
+  const onDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    if (!isDragging) setIsDragging(true);
+  };
+  const onDragLeave = (e: DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setIsDragging(false);
+  };
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    handleFileSelected(e.dataTransfer.files?.[0]);
   };
 
   const getLocationIfNeeded = (): Promise<GeolocationPosition | null> => {
@@ -91,107 +108,200 @@ export default function ScanPage() {
     }
   };
 
+  const tips: { icon: IconName; text: string }[] = [
+    { icon: "scan", text: t.scan.tip1 },
+    { icon: "sun", text: t.scan.tip2 },
+    { icon: "target", text: t.scan.tip3 },
+  ];
+
   return (
-    <div className="mx-auto max-w-xl animate-fade-in">
-      <h1 className="font-display text-2xl font-semibold text-ink">{t.scan.title}</h1>
-      <p className="mt-1.5 text-sm text-muted">{t.scan.subtitle}</p>
+    <div className="flex flex-col gap-8 stagger">
+      <PageHeader title={t.scan.title} subtitle={t.scan.subtitle} />
 
-      <Card className="mt-6">
-        {stage === "idle" && (
-          <div className="flex flex-col items-center gap-4 py-6 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary-light text-primary">
-              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
+        <Card className="!p-3 sm:!p-4">
+          {stage === "idle" && (
+            <div
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+              className={`relative flex min-h-[24rem] flex-col items-center justify-center gap-6 overflow-hidden rounded-[1.25rem] border-2 border-dashed px-6 py-10 text-center transition-all duration-300 sm:min-h-[28rem]
+                ${isDragging ? "scale-[0.99] border-primary bg-primary/[0.07]" : "border-primary/20 bg-primary/[0.025]"}`}
+            >
+              <Viewfinder tight={isDragging} />
+
+              <div className="relative flex h-24 w-24 items-center justify-center">
+                <span className="absolute inset-0 animate-pulse-ring rounded-full bg-primary/15" />
+                <span className="absolute inset-0 animate-pulse-ring rounded-full bg-primary/10 [animation-delay:1.2s]" />
+                <span
+                  className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-brand text-white shadow-glow-lg transition-transform duration-500 ease-spring ${isDragging ? "scale-110" : ""}`}
+                >
+                  <Icon name={isDragging ? "download" : "upload"} className="h-9 w-9" />
+                </span>
+              </div>
+
+              <div className="relative">
+                <p className="font-display text-xl font-semibold text-ink">{isDragging ? t.scan.dropHere : t.scan.uploadPrompt}</p>
+                <p className="mt-1.5 text-sm text-muted">{t.scan.formats}</p>
+              </div>
+
+              {error && (
+                <div className="relative w-full max-w-md">
+                  <Alert tone="error">{error}</Alert>
+                </div>
+              )}
+
+              <div className="relative flex w-full max-w-md flex-col gap-3 sm:flex-row">
+                <Button variant="glass" size="lg" fullWidth icon="camera" onClick={() => cameraInputRef.current?.click()}>
+                  {t.scan.useCamera}
+                </Button>
+                <Button size="lg" fullWidth icon="photo" onClick={() => fileInputRef.current?.click()}>
+                  {t.scan.chooseFile}
+                </Button>
+              </div>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => handleFileSelected(e.target.files?.[0])}
+              />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => handleFileSelected(e.target.files?.[0])}
+              />
             </div>
-            <p className="text-sm text-muted">{t.scan.uploadPrompt}</p>
+          )}
 
-            {error && <Alert tone="error">{error}</Alert>}
+          {(stage === "preview" || stage === "analyzing") && previewUrl && (
+            <div className="flex flex-col gap-4 animate-fade-in">
+              <div className="relative overflow-hidden rounded-[1.25rem] bg-grove">
+                <img
+                  src={previewUrl}
+                  alt="Selected plant"
+                  className={`max-h-[28rem] w-full object-cover transition-all duration-700 ${stage === "analyzing" ? "scale-[1.03] brightness-[0.7] saturate-[1.15]" : ""}`}
+                />
+                {stage === "analyzing" && <AnalyzingOverlay />}
+                {stage === "preview" && (
+                  <Viewfinder className="text-white/80" />
+                )}
+              </div>
 
-            <div className="flex w-full flex-col gap-2.5 sm:flex-row">
-              <Button variant="secondary" fullWidth onClick={() => cameraInputRef.current?.click()}>
-                {t.scan.useCamera}
-              </Button>
-              <Button fullWidth onClick={() => fileInputRef.current?.click()}>
-                {t.scan.chooseFile}
-              </Button>
-            </div>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={(e) => handleFileSelected(e.target.files?.[0])}
-            />
-            <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => handleFileSelected(e.target.files?.[0])}
-            />
-          </div>
-        )}
-
-        {(stage === "preview" || stage === "analyzing") && previewUrl && (
-          <div className="flex flex-col items-center gap-4">
-            <div className="relative w-full overflow-hidden rounded-card">
-              <img src={previewUrl} alt="Selected plant" className="max-h-80 w-full object-cover" />
-              {stage === "analyzing" && (
-                <div className="absolute inset-0 overflow-hidden bg-ink/30">
-                  <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-primary-light/70 to-transparent animate-scan-sweep" />
+              {stage === "analyzing" ? (
+                <div className="flex flex-col items-center gap-4 py-6 text-center animate-fade-in" role="status" aria-live="polite">
+                  <ScanRing size={76} />
+                  <div>
+                    <p className="font-display text-lg font-semibold text-ink">{t.scan.analyzing}</p>
+                    <p className="mx-auto mt-1.5 max-w-sm text-sm leading-relaxed text-muted">{t.scan.analyzingBody}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4 px-1 pb-1">
+                  {error && <Alert tone="error">{error}</Alert>}
+                  <Switch
+                    checked={attachLocation}
+                    onChange={setAttachLocation}
+                    label={t.scan.attachLocation}
+                    icon={<Icon name="pin" className="h-5 w-5" />}
+                  />
+                  <div className="flex w-full flex-col-reverse gap-3 sm:flex-row">
+                    <Button variant="glass" size="lg" icon="refresh" onClick={resetToIdle}>
+                      {t.scan.retake}
+                    </Button>
+                    <Button size="lg" fullWidth icon="sparkles" onClick={() => void handleSubmit()}>
+                      {t.scan.submit}
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
+          )}
 
-            {stage === "analyzing" ? (
-              <div className="flex flex-col items-center gap-2 py-2 text-center">
-                <ProgressRing value={70} size={72} strokeWidth={6} label="" valueLabel="" />
-                <p className="font-display font-semibold text-ink">{t.scan.analyzing}</p>
-                <p className="max-w-xs text-sm text-muted">{t.scan.analyzingBody}</p>
-              </div>
-            ) : (
-              <>
-                {error && <Alert tone="error">{error}</Alert>}
-                <label className="flex items-center gap-2 self-start text-sm text-muted">
-                  <input
-                    type="checkbox"
-                    checked={attachLocation}
-                    onChange={(e) => setAttachLocation(e.target.checked)}
-                    className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
-                  />
-                  {t.scan.attachLocation}
-                </label>
-                <div className="flex w-full gap-2.5">
-                  <Button variant="ghost" onClick={resetToIdle}>
-                    {t.scan.retake}
-                  </Button>
-                  <Button fullWidth onClick={() => void handleSubmit()}>
-                    {t.scan.submit}
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {stage === "unrecognized" && (
-          <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-severity-moderate-bg text-severity-moderate">
-              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.803.394-1.451 1.088-1.451 1.996v.5m0 4.5h.008M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+          {stage === "unrecognized" && (
+            <div className="flex min-h-[22rem] flex-col items-center justify-center gap-4 px-6 py-10 text-center animate-scale-in">
+              <span className="flex h-20 w-20 items-center justify-center rounded-3xl bg-severity-moderate-bg text-severity-moderate ring-1 ring-inset ring-severity-moderate/20">
+                <Icon name="search" className="h-9 w-9" />
+              </span>
+              <p className="font-display text-xl font-semibold text-ink">{t.scan.unrecognized}</p>
+              <p className="max-w-sm text-sm leading-relaxed text-muted">{t.scan.unrecognizedBody}</p>
+              <Button size="lg" icon="camera" className="mt-2" onClick={resetToIdle}>
+                {t.scan.tryAgain}
+              </Button>
             </div>
-            <p className="font-display text-lg font-semibold text-ink">{t.scan.unrecognized}</p>
-            <p className="max-w-xs text-sm text-muted">{t.scan.unrecognizedBody}</p>
-            <Button className="mt-2" onClick={resetToIdle}>
-              {t.scan.tryAgain}
-            </Button>
-          </div>
-        )}
-      </Card>
+          )}
+        </Card>
+
+        <Card>
+          <p className="mb-5 flex items-center gap-2.5 font-display text-base font-semibold text-ink">
+            <Icon name="lightning" className="h-5 w-5 text-accent" />
+            {t.scan.tipsTitle}
+          </p>
+          <ul className="flex flex-col gap-4">
+            {tips.map((tip) => (
+              <Tip key={tip.text} icon={tip.icon}>
+                {tip.text}
+              </Tip>
+            ))}
+          </ul>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function Tip({ icon, children }: { icon: IconName; children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-3">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <Icon name={icon} className="h-[18px] w-[18px]" />
+      </span>
+      <span className="pt-2 text-sm leading-snug text-ink">{children}</span>
+    </li>
+  );
+}
+
+/** Camera-viewfinder corner brackets; they pull inward while a file is dragged over. */
+function Viewfinder({ tight = false, className = "text-primary/50" }: { tight?: boolean; className?: string }) {
+  const inset = tight ? "1.75rem" : "1rem";
+  const corner = "absolute h-10 w-10 border-current transition-all duration-500 ease-spring";
+  return (
+    <div className={`pointer-events-none absolute inset-0 ${className}`} aria-hidden="true">
+      <span className={`${corner} rounded-ss-2xl border-s-[3px] border-t-[3px]`} style={{ top: inset, insetInlineStart: inset }} />
+      <span className={`${corner} rounded-se-2xl border-e-[3px] border-t-[3px]`} style={{ top: inset, insetInlineEnd: inset }} />
+      <span className={`${corner} rounded-es-2xl border-b-[3px] border-s-[3px]`} style={{ bottom: inset, insetInlineStart: inset }} />
+      <span className={`${corner} rounded-ee-2xl border-b-[3px] border-e-[3px]`} style={{ bottom: inset, insetInlineEnd: inset }} />
+    </div>
+  );
+}
+
+/** Scanner overlay while the AI works: measurement grid, a sweeping scan line and
+ * glowing corner brackets over the photo. */
+function AnalyzingOverlay() {
+  return (
+    <div className="pointer-events-none absolute inset-0 animate-fade-in" aria-hidden="true">
+      <div
+        className="absolute inset-0 opacity-30"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgb(166 240 138 / 0.35) 1px, transparent 1px), linear-gradient(90deg, rgb(166 240 138 / 0.35) 1px, transparent 1px)",
+          backgroundSize: "36px 36px",
+        }}
+      />
+      <div className="absolute inset-x-0 top-[6%] animate-scan-line">
+        <div className="h-24 -translate-y-full bg-gradient-to-t from-sprout/30 to-transparent" />
+        <div className="h-[2px] -translate-y-24 bg-[#b9f59c] shadow-[0_0_20px_5px_rgb(140_230_100/0.7)]" />
+      </div>
+      <div className="absolute inset-0 text-[#b9f59c] drop-shadow-[0_0_8px_rgb(140_230_100/0.8)]">
+        <span className="absolute start-4 top-4 h-10 w-10 rounded-ss-2xl border-s-[3px] border-t-[3px] border-current" />
+        <span className="absolute end-4 top-4 h-10 w-10 rounded-se-2xl border-e-[3px] border-t-[3px] border-current" />
+        <span className="absolute bottom-4 start-4 h-10 w-10 rounded-es-2xl border-b-[3px] border-s-[3px] border-current" />
+        <span className="absolute bottom-4 end-4 h-10 w-10 rounded-ee-2xl border-b-[3px] border-e-[3px] border-current" />
+      </div>
     </div>
   );
 }

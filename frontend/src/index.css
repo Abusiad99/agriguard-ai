@@ -2,19 +2,234 @@
 @tailwind components;
 @tailwind utilities;
 
-html {
-  scroll-behavior: smooth;
+/* ------------------------------------------------------------------------------
+ * Theme tokens — RGB channels so Tailwind opacity modifiers work (`bg-primary/20`).
+ * Light = "morning mist over the grove"; dark = "the grove at night".
+ * Severity colors stay functional: they only ever encode Mild / Moderate / Severe.
+ * --------------------------------------------------------------------------- */
+@layer base {
+  :root {
+    --c-canvas: 242 246 243;
+    --c-surface: 255 255 255;
+    --c-ink: 13 36 27;
+    --c-muted: 84 107 96;
+    --c-line: 213 225 217;
+    --c-grove: 9 52 38;
+    --c-sprout: 126 217 87;
+    --c-primary: 21 128 84;
+    --c-primary-dark: 10 86 57;
+    --c-primary-light: 216 240 227;
+    --c-accent: 217 163 59;
+    --c-accent-dark: 168 120 30;
+    --c-mild: 154 106 11;
+    --c-mild-bg: 252 242 214;
+    --c-moderate: 178 84 18;
+    --c-moderate-bg: 251 230 212;
+    --c-severe: 178 52 38;
+    --c-severe-bg: 249 223 218;
+    --c-shadow: 9 52 38;
+
+    --glass-bg: rgb(255 255 255 / 0.72);
+    --glass-border: rgb(var(--c-line) / 0.85);
+    --glass-highlight: rgb(255 255 255 / 0.9);
+    --contour: rgb(var(--c-primary) / 0.11);
+    --grain-opacity: 0.035;
+
+    color-scheme: light;
+  }
+
+  .dark {
+    --c-canvas: 5 19 14;
+    --c-surface: 12 33 25;
+    --c-ink: 229 241 234;
+    --c-muted: 140 166 153;
+    --c-line: 34 62 50;
+    --c-grove: 7 40 29;
+    --c-sprout: 140 230 100;
+    --c-primary: 56 200 132;
+    --c-primary-dark: 156 236 192;
+    --c-primary-light: 18 64 45;
+    --c-accent: 233 183 82;
+    --c-accent-dark: 210 160 60;
+    --c-mild: 235 186 74;
+    --c-mild-bg: 56 43 14;
+    --c-moderate: 242 146 76;
+    --c-moderate-bg: 62 35 17;
+    --c-severe: 245 115 98;
+    --c-severe-bg: 66 25 21;
+    --c-shadow: 0 0 0;
+
+    --glass-bg: rgb(12 33 25 / 0.58);
+    --glass-border: rgb(255 255 255 / 0.07);
+    --glass-highlight: rgb(255 255 255 / 0.05);
+    --contour: rgb(var(--c-sprout) / 0.07);
+    --grain-opacity: 0.05;
+
+    color-scheme: dark;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-canvas font-body text-ink antialiased;
+    transition: background-color 0.4s ease, color 0.4s ease;
+  }
+
+  html[dir="rtl"] body {
+    font-family: "IBM Plex Sans Arabic", "IBM Plex Sans", ui-sans-serif, sans-serif;
+  }
+
+  h1, h2, h3 {
+    @apply font-display;
+    letter-spacing: -0.01em;
+  }
+
+  html[dir="rtl"] h1,
+  html[dir="rtl"] h2,
+  html[dir="rtl"] h3 {
+    letter-spacing: 0;
+  }
+
+  /* Visible keyboard focus everywhere (accessibility floor, never removed). */
+  :focus-visible {
+    outline: 2px solid rgb(var(--c-primary));
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+
+  ::selection {
+    background-color: rgb(var(--c-primary) / 0.22);
+    color: rgb(var(--c-ink));
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--c-muted) / 0.35) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgb(var(--c-muted) / 0.3);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    opacity: 0.55;
+    cursor: pointer;
+  }
+  .dark input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
 }
 
-html[dir="rtl"] body {
-  font-family: "IBM Plex Sans Arabic", "IBM Plex Sans", ui-sans-serif, sans-serif;
+@layer components {
+  /* Frosted surface used for panels, the sidebar and overlays. */
+  .glass {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 var(--glass-highlight), 0 1px 2px rgb(var(--c-shadow) / 0.05),
+      0 18px 40px -24px rgb(var(--c-shadow) / 0.35);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    backdrop-filter: blur(18px) saturate(150%);
+  }
+
+  /* The brand gradient: chlorophyll deepening into grove green. */
+  .bg-brand {
+    background-image: linear-gradient(135deg, #22a56c 0%, #17895a 45%, #0a5a3b 100%);
+  }
+
+  .bg-grove-deep {
+    background-color: #062a1e;
+    background-image: radial-gradient(120% 80% at 15% 0%, rgb(34 165 108 / 0.45) 0%, transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgb(217 163 59 / 0.22) 0%, transparent 60%),
+      linear-gradient(160deg, #0a3a29 0%, #052117 100%);
+  }
+
+  /* Hairline gradient border via mask — used on the hero panel and highlighted cards. */
+  .ring-gradient {
+    position: relative;
+  }
+  .ring-gradient::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(140deg, rgb(var(--c-sprout) / 0.7), rgb(var(--c-primary) / 0.1) 40%, rgb(var(--c-accent) / 0.55));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .grain {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: var(--grain-opacity);
+    mix-blend-mode: overlay;
+  }
+
+  .skeleton {
+    background-image: linear-gradient(90deg, rgb(var(--c-line) / 0.5) 0%, rgb(var(--c-line) / 0.95) 50%, rgb(var(--c-line) / 0.5) 100%);
+    background-size: 200% 100%;
+    @apply animate-shimmer rounded-card;
+  }
+
+  /* One orchestrated entrance per page: direct children rise in, one after another. */
+  .stagger > * {
+    @apply animate-rise-in;
+  }
+  .stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger > *:nth-child(2) { animation-delay: 70ms; }
+  .stagger > *:nth-child(3) { animation-delay: 140ms; }
+  .stagger > *:nth-child(4) { animation-delay: 210ms; }
+  .stagger > *:nth-child(5) { animation-delay: 280ms; }
+  .stagger > *:nth-child(6) { animation-delay: 350ms; }
+  .stagger > *:nth-child(7) { animation-delay: 420ms; }
+  .stagger > *:nth-child(8) { animation-delay: 490ms; }
+  .stagger > *:nth-child(n + 9) { animation-delay: 540ms; }
+
+  .ripple {
+    position: absolute;
+    border-radius: 9999px;
+    pointer-events: none;
+    background: currentColor;
+    @apply animate-ripple;
+  }
 }
 
-/* Visible keyboard focus everywhere (accessibility floor, never removed). */
-:focus-visible {
-  outline: 2px solid #2f6b4f;
-  outline-offset: 2px;
-  border-radius: 2px;
+@layer utilities {
+  .font-tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .origin-start {
+    transform-origin: left center;
+  }
+  [dir="rtl"] .origin-start {
+    transform-origin: right center;
+  }
+  .flip-rtl {
+    transform: none;
+  }
+  [dir="rtl"] .flip-rtl {
+    transform: scaleX(-1);
+  }
+}
+
+/* Used by inline-styled SVG groups (contour hills), so declared outside Tailwind's JIT. */
+@keyframes agri-turn {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -23,16 +238,8 @@ html[dir="rtl"] body {
   *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
-}
-
-::selection {
-  background-color: #dceae1;
-  color: #1c2b22;
-}
-
-.font-tabular {
-  font-variant-numeric: tabular-nums;
 }

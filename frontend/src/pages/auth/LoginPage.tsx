@@ -38,15 +38,16 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="animate-fade-in">
-      <h1 className="font-display text-2xl font-semibold text-ink">{t.auth.loginTitle}</h1>
-      <p className="mt-1.5 text-sm text-muted">{t.auth.loginSubtitle}</p>
+    <div className="stagger">
+      <h1 className="font-display text-[1.75rem] font-semibold leading-tight text-ink">{t.auth.loginTitle}</h1>
+      <p className="mt-2 text-[0.95rem] text-muted">{t.auth.loginSubtitle}</p>
 
       <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4" noValidate>
         {error && <Alert tone="error">{error}</Alert>}
 
         <Input
           label={t.auth.email}
+          icon="mail"
           type="email"
           name="email"
           autoComplete="email"
@@ -56,6 +57,7 @@ export default function LoginPage() {
         />
         <Input
           label={t.auth.password}
+          icon="lock"
           type="password"
           name="password"
           autoComplete="current-password"
@@ -64,14 +66,14 @@ export default function LoginPage() {
           onChange={(e) => setPassword(e.target.value)}
         />
 
-        <Button type="submit" fullWidth isLoading={isSubmitting} className="mt-2">
+        <Button type="submit" size="lg" fullWidth isLoading={isSubmitting} iconEnd="arrowRight" className="mt-3">
           {t.auth.loginButton}
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-muted">
+      <p className="mt-7 text-center text-sm text-muted">
         {t.auth.noAccount}{" "}
-        <Link to="/register" className="font-semibold text-primary hover:underline">
+        <Link to="/register" className="font-semibold text-primary underline-offset-4 transition-colors hover:text-primary-dark hover:underline">
           {t.auth.signUp}
         </Link>
       </p>

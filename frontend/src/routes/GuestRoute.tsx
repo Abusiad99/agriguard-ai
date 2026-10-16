@@ -6,7 +6,7 @@ import { PageLoader } from "@/components/ui/PageLoader";
 export function GuestRoute() {
   const { isAuthenticated, isInitializing } = useAuth();
 
-  if (isInitializing) return <PageLoader />;
+  if (isInitializing) return <PageLoader fullScreen />;
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
 
   return <Outlet />;

@@ -29,6 +29,15 @@ const ar: TranslationDict = {
     passwordHint: "8 أحرف على الأقل، تتضمن حرفًا كبيرًا ورقمًا.",
     loginError: "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
     genericError: "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
+    heroBody: "وجّه الكاميرا نحو الورقة، وسيتعرّف أجري جارد على النبات ويشخّص الأمراض والآفات، ثم يخبرك بالخطوة التالية بدقة — علاج عضوي أو كيميائي، ووقاية، وتوقيت مناسب للطقس.",
+    heroCrops: "يدعم 17 محصولًا، من الطماطم إلى نخيل التمر.",
+    featureCrops: "17 محصولًا",
+    featureWeather: "نصائح حسب الطقس",
+    featureReports: "تقارير PDF",
+    exampleScan: "مثال على فحص",
+    examplePlant: "طماطم",
+    exampleDisease: "اللفحة المبكرة",
+    invalidEmail: "أدخل بريدًا إلكترونيًا صالحًا.",
   },
 
   dashboard: {
@@ -43,6 +52,12 @@ const ar: TranslationDict = {
     noScansYet: "لا توجد فحوصات بعد",
     noScansYetBody: "افحص أول نبات لك لترى سجل التشخيصات والاتجاهات هنا.",
     scanNow: "افحص نباتًا",
+    welcome: "أهلًا بعودتك، {name}",
+    subtitle: "هذه حالة محاصيلك مؤخرًا.",
+    healthRate: "نسبة السلامة",
+    healthRateBody: "{healthy} من أصل {total} فحصًا كانت سليمة.",
+    scanCtaTitle: "لاحظت شيئًا على ورقة؟",
+    scanCtaBody: "التقط صورة لتحصل على التشخيص وخطة العلاج والتوقيت المناسب حسب الطقس.",
   },
 
   scan: {
@@ -61,6 +76,12 @@ const ar: TranslationDict = {
     unrecognized: "تعذّر علينا التعرف على هذا النبات",
     unrecognizedBody: "حاول إعادة التقاط الصورة مع توسيط الورقة، بإضاءة جيدة، وملء الإطار.",
     tryAgain: "حاول مرة أخرى",
+    dropHere: "أفلت الصورة لرفعها",
+    formats: "JPG أو PNG أو WebP، حتى 15 ميجابايت",
+    tipsTitle: "لأدق تشخيص",
+    tip1: "اجعل الورقة المصابة تملأ الإطار",
+    tip2: "صوّر في ضوء النهار بعيدًا عن الظلال القوية",
+    tip3: "ثبّت يدك لتظهر البقع بوضوح",
   },
 
   result: {
@@ -116,6 +137,11 @@ const ar: TranslationDict = {
     aiUrgencyLow: "منخفضة",
     aiUrgencyMedium: "متوسطة",
     aiUrgencyHigh: "عالية",
+    noAccess: "ليست لديك صلاحية الوصول إلى هذا التشخيص.",
+    backToHistory: "العودة إلى السجل",
+    severityMild: "خفيفة",
+    severityModerate: "متوسطة",
+    severitySevere: "شديدة",
   },
 
   history: {
@@ -182,6 +208,22 @@ const ar: TranslationDict = {
     page: "صفحة",
     of: "من",
     unknownError: "حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.",
+    toggleTheme: "تبديل المظهر",
+    lightMode: "فاتح",
+    darkMode: "داكن",
+    theme: "المظهر",
+  },
+
+  notFound: {
+    title: "الصفحة غير موجودة",
+    body: "الصفحة التي تبحث عنها غير موجودة أو تم نقلها.",
+    action: "الذهاب إلى لوحة البيانات",
+  },
+
+  roles: {
+    farmer: "مزارع",
+    agronomist: "مهندس زراعي",
+    admin: "مسؤول",
   },
 };
 

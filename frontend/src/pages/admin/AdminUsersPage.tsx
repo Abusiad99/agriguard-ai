@@ -8,7 +8,8 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/Card";
+import { Pagination } from "@/components/ui/Pagination";
 import { Alert } from "@/components/ui/Alert";
 import type { UserRole } from "@/types/api";
 import { ApiError } from "@/types/api";
@@ -55,17 +56,21 @@ export default function AdminUsersPage() {
   };
 
   return (
-    <div className="flex flex-col gap-5 animate-fade-in">
-      <h1 className="font-display text-2xl font-semibold text-ink">{t.admin.usersTitle}</h1>
+    <div className="flex flex-col gap-6 stagger">
+      <PageHeader title={t.admin.usersTitle} />
 
-      <Input
-        placeholder={t.admin.searchUsers}
-        value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          setPage(1);
-        }}
-      />
+      <div className="max-w-md">
+        <Input
+          icon="search"
+          placeholder={t.admin.searchUsers}
+          aria-label={t.admin.searchUsers}
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
+        />
+      </div>
 
       {rowError && <Alert tone="error">{rowError}</Alert>}
 
@@ -73,71 +78,64 @@ export default function AdminUsersPage() {
       {users.status === "error" && <ErrorState message={errorMessage(users.error)} onRetry={users.refetch} />}
 
       {users.status === "success" && (
-        <div className="overflow-x-auto rounded-card border border-line bg-surface">
-          <table className="w-full text-start text-sm">
-            <thead className="border-b border-line bg-canvas text-xs uppercase tracking-wide text-muted">
-              <tr>
-                <th className="px-4 py-3 text-start">{t.auth.fullName}</th>
-                <th className="px-4 py-3 text-start">{t.auth.email}</th>
-                <th className="px-4 py-3 text-start">{t.admin.role}</th>
-                <th className="px-4 py-3 text-start">{t.admin.status}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.data.items.map((u) => {
-                const isSelf = u.id === currentUser?.id;
-                return (
-                  <tr key={u.id} className="border-b border-line last:border-0">
-                    <td className="px-4 py-3 font-medium text-ink">{u.full_name}</td>
-                    <td className="px-4 py-3 text-muted">{u.email}</td>
-                    <td className="px-4 py-3">
-                      <Select
-                        aria-label={t.admin.role}
-                        value={u.role}
-                        disabled={isSelf || savingUserId === u.id}
-                        onChange={(e) => void handleRoleChange(u.id, e.target.value as UserRole)}
-                        className="w-32"
-                      >
-                        <option value="farmer">farmer</option>
-                        <option value="agronomist">agronomist</option>
-                        <option value="admin">admin</option>
-                      </Select>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        disabled={isSelf || savingUserId === u.id}
-                        onClick={() => void handleToggleActive(u.id, u.is_active)}
-                        className="disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <Badge tone={u.is_active ? "primary" : "severe"}>
-                          {u.is_active ? t.admin.active : t.admin.inactive}
-                        </Badge>
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          {users.data.total_pages > 1 && (
-            <div className="flex items-center justify-center gap-3 border-t border-line py-3">
-              <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                {t.common.back}
-              </Button>
-              <span className="text-sm text-muted">
-                {t.common.page} {users.data.page} {t.common.of} {users.data.total_pages}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={page >= users.data.total_pages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                {t.common.next}
-              </Button>
-            </div>
-          )}
+        <div className="flex flex-col gap-5">
+          <div className="glass overflow-x-auto rounded-panel">
+            <table className="w-full min-w-[40rem] text-sm">
+              <thead className="text-xs text-muted">
+                <tr className="border-b border-line/70">
+                  <th className="px-5 py-4 text-start font-medium">{t.auth.fullName}</th>
+                  <th className="px-5 py-4 text-start font-medium">{t.auth.email}</th>
+                  <th className="px-5 py-4 text-start font-medium">{t.admin.role}</th>
+                  <th className="px-5 py-4 text-start font-medium">{t.admin.status}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.data.items.map((u) => {
+                  const isSelf = u.id === currentUser?.id;
+                  const isSaving = savingUserId === u.id;
+                  return (
+                    <tr key={u.id} className="border-b border-line/50 transition-colors last:border-0 hover:bg-primary/[0.03]">
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 font-display text-sm font-semibold text-primary">
+                            {u.full_name.charAt(0).toUpperCase()}
+                          </span>
+                          <span className="whitespace-nowrap font-medium text-ink">{u.full_name}</span>
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3.5 text-muted">{u.email}</td>
+                      <td className="px-5 py-3.5">
+                        <div className="w-40">
+                          <Select
+                            compact
+                            aria-label={t.admin.role}
+                            value={u.role}
+                            disabled={isSelf || isSaving}
+                            onChange={(e) => void handleRoleChange(u.id, e.target.value as UserRole)}
+                          >
+                            <option value="farmer">{t.roles.farmer}</option>
+                            <option value="agronomist">{t.roles.agronomist}</option>
+                            <option value="admin">{t.roles.admin}</option>
+                          </Select>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <button
+                          type="button"
+                          disabled={isSelf || isSaving}
+                          onClick={() => void handleToggleActive(u.id, u.is_active)}
+                          className="rounded-full transition-transform duration-300 ease-spring hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-60"
+                        >
+                          <Badge tone={u.is_active ? "primary" : "severe"}>{u.is_active ? t.admin.active : t.admin.inactive}</Badge>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={page} totalPages={users.data.total_pages} onChange={setPage} />
         </div>
       )}
     </div>
