@@ -53,26 +53,38 @@ def main() -> int:
     print(f"AgriGuard AI — Diagnosis for: {image_path.name}")
     print("=" * 60)
 
-    if result.unrecognized_plant:
-        print(f"Result: UNRECOGNIZED PLANT (plant-mass confidence {result.confidence_score:.2f}%)")
-        print("Please retake the photo with clearer framing of a single leaf/plant part.")
-    else:
-        print(f"Plant:              {result.plant}")
-        print(f"Condition:          {result.condition}")
-        print(f"Confidence:         {result.confidence_score:.2f}%"
-              + ("  [LOW CONFIDENCE — recommend manual expert review]" if result.low_confidence_flag else ""))
-        if result.severity_level:
-            print(f"Severity:           {result.severity_level} "
-                  f"(affected {result.affected_area_pct:.1f}% / healthy {result.healthy_area_pct:.1f}%)")
-        if result.bounding_box:
-            b = result.bounding_box
-            print(f"Affected region:    x[{b['x_min']}:{b['x_max']}] y[{b['y_min']}:{b['y_max']}]")
-        if result.heatmap_overlay_path:
-            print(f"Heatmap saved to:   {result.heatmap_overlay_path}")
+    if result.status == "rejected_quality":
+        print("Result: PHOTO NOT SUITABLE — nothing was classified.")
+        for issue in result.quality.get("issues", []):
+            if issue["severity"] == "reject":
+                print(f"  - {issue['message']} {issue['hint']}")
+        print("=" * 60 + "\n")
+        return 0
 
-        print("\nTop-{} predictions:".format(args.top_k))
-        for i, item in enumerate(result.top_k, 1):
-            print(f"  {i}. {item['plant']} — {item['condition']}  ({item['confidence']:.2f}%)")
+    th = result.thresholds
+    print(f"Decision status:    {result.decision_status.upper()}  "
+          f"(thresholds: confident>={th['confident']:.2f}, inconclusive<{th['reject']:.2f}; source={th['source']}"
+          f"{', calibrated T=' + format(th['temperature'], '.2f') if th['calibrated'] else ', NOT calibrated'})")
+    if result.decision_status == "inconclusive":
+        print("Condition:          not named — insufficient evidence (retake the photo or consult an expert)")
+        if result.plant:
+            print(f"Likely plant:       {result.plant}")
+    else:
+        label = "Leading candidate:" if result.decision_status == "uncertain" else "Prediction:       "
+        print(f"{label}  {result.plant} — {result.condition}  ({result.confidence_score:.1f}% calibrated)")
+    for issue in result.quality.get("issues", []):
+        print(f"Photo quality note: {issue['message']}")
+    if result.affected_area_pct is not None:
+        print(f"Affected area:      {result.affected_area_pct:.1f}% of visible leaf ({result.severity_method})")
+    else:
+        print("Affected area:      not measured (no trained segmentation model)")
+    if result.heatmap_overlay_path:
+        print(f"Attention map:      {result.heatmap_overlay_path} (Grad-CAM; not a lesion map)")
+
+    print("\nTop-{} candidates (calibrated):".format(args.top_k))
+    for i, item in enumerate(result.top_k, 1):
+        print(f"  {i}. {item['plant']} — {item['condition']}  ({item['confidence']:.2f}%)")
+    print(f"\nModel {result.model_version} · pipeline {result.pipeline_version} · {result.inference_ms} ms")
 
     print("=" * 60 + "\n")
     return 0

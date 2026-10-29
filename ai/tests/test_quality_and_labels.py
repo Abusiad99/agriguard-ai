@@ -9,33 +9,40 @@ from ai.quality.image_quality import assess_image_quality, compute_quality_metri
 
 
 def _textured(size=512, seed=0):
+    """Synthetic 'leaf photo': a green ellipse with vein texture on a brown background
+    (low-frequency structure plus fine detail, like a real photo)."""
     rng = np.random.default_rng(seed)
     yy, xx = np.mgrid[0:size, 0:size]
-    base = np.stack([60 + 0 * xx, 140 + 0 * xx, 50 + 0 * xx], axis=-1).astype(float)
-    pattern = 40 * np.sin(xx / 5.0) * np.cos(yy / 7.0)
-    arr = np.clip(base + pattern[..., None] + rng.normal(0, 15, (size, size, 1)), 0, 255).astype("uint8")
-    return Image.fromarray(arr)
+    leaf = ((xx - size / 2) / (0.4 * size)) ** 2 + ((yy - size / 2) / (0.3 * size)) ** 2 <= 1
+    arr = np.zeros((size, size, 3), dtype=float)
+    arr[...] = (200, 185, 160)
+    arr[leaf] = (60, 140, 50)
+    pattern = 30 * np.sin(xx / 5.0) * np.cos(yy / 7.0)
+    arr = np.clip(arr + pattern[..., None] * leaf[..., None] + rng.normal(0, 10, (size, size, 1)), 0, 255)
+    return Image.fromarray(arr.astype("uint8"))
 
 
 def test_sharp_well_exposed_leaf_passes():
     rep = assess_image_quality(_textured())
     assert rep.status == "ok", rep.issues
-    assert rep.metrics["vegetation_fraction"] > 0.5
+    assert rep.metrics["vegetation_fraction"] > 0.3
 
 
 def test_blur_darkness_overexposure_resolution_and_blank_are_detected():
     img = _textured()
     codes = lambda im: {i.code for i in assess_image_quality(im).issues}  # noqa: E731
     assert "too_blurry" in codes(img.filter(ImageFilter.GaussianBlur(8)))
-    assert codes(ImageEnhance.Brightness(img).enhance(0.08)) & {"too_dark", "no_detail"}
-    assert codes(ImageEnhance.Brightness(img).enhance(4.0)) & {"overexposed", "no_detail"}
+    assert "too_dark" in codes(ImageEnhance.Brightness(img).enhance(0.08))
+    assert codes(ImageEnhance.Brightness(img).enhance(4.0)) & {"overexposed", "partly_overexposed"}
     assert "resolution_too_low" in codes(img.resize((60, 60)))
     assert "no_detail" in codes(Image.new("RGB", (400, 400), (128, 128, 128)))
 
 
 def test_non_green_subject_only_warns():
-    arr = np.array(_textured())[..., ::-1]  # swap channels -> reddish/blue image with the same texture
-    rep = assess_image_quality(Image.fromarray(arr.copy()))
+    # e.g. a close-up of a rotting fruit: sharp and well exposed, but not green
+    arr = np.array(_textured()).astype(float)
+    arr = np.stack([arr[..., 1], arr[..., 1] * 0.5, arr[..., 2] * 0.6], axis=-1)
+    rep = assess_image_quality(Image.fromarray(np.clip(arr, 0, 255).astype("uint8")))
     assert not rep.rejected
     assert any(i.code == "little_plant_tissue" and i.severity == "warning" for i in rep.issues)
 

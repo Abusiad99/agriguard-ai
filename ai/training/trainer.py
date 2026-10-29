@@ -69,6 +69,13 @@ class Trainer:
         return train_loader, val_loader
 
     def _build_criterion(self) -> nn.Module:
+        if self.cfg.use_class_weighting and self.cfg.use_weighted_sampler:
+            # The weighted sampler already presents classes in balanced proportions;
+            # also weighting the loss would compensate twice and over-weight rare
+            # classes, so only one balancing mechanism is applied.
+            logger.info("Class-balanced sampling is active; loss class weighting is skipped "
+                        "to avoid double compensation.")
+            return nn.CrossEntropyLoss()
         if self.cfg.use_class_weighting:
             class_counts = self.train_dataset.class_sample_counts()
             weights = _build_class_weights(class_counts, self.num_classes).to(self.device)
@@ -82,7 +89,9 @@ class Trainer:
             self.model.parameters(), lr=self.cfg.learning_rate, weight_decay=self.cfg.weight_decay
         )
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=2)
-        scaler = torch.cuda.amp.GradScaler(enabled=(self.cfg.mixed_precision and self.device.type == "cuda"))
+        use_amp = self.cfg.mixed_precision and self.device.type == "cuda"
+        scaler = (torch.amp.GradScaler("cuda", enabled=use_amp) if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler")
+                  else torch.cuda.amp.GradScaler(enabled=use_amp))
 
         if self.cfg.freeze_backbone_epochs > 0:
             freeze_backbone(self.model)
@@ -130,7 +139,7 @@ class Trainer:
         return self.history
 
     def _run_epoch(self, loader: DataLoader, criterion: nn.Module,
-                    optimizer: torch.optim.Optimizer, scaler: torch.cuda.amp.GradScaler,
+                    optimizer: torch.optim.Optimizer, scaler,
                     is_train: bool):
         self.model.train(mode=is_train)
         total_loss, correct, total = 0.0, 0, 0

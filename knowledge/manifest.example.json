@@ -1,0 +1,19 @@
+{
+  "_comment": "Copy to manifest.json, place the source files next to it, and fill in REAL provenance for each document you have obtained from the stated organization (and may use under its licence). Do not invent titles, organizations, URLs or dates. Run: cd backend && python scripts/ingest_knowledge.py --manifest ../knowledge/manifest.json",
+  "documents": [
+    {
+      "path": "sources/<file name>.html",
+      "title": "<exact title of the publication>",
+      "organization": "<publishing government agency / university extension service / research institute>",
+      "source_type": "university_extension",
+      "url": "<URL the document was obtained from>",
+      "language": "en",
+      "published_date": "YYYY-MM-DD",
+      "revised_date": null,
+      "retrieved_at": "YYYY-MM-DD",
+      "crops": ["tomato"],
+      "diseases": ["early_blight"],
+      "license_note": "<licence / permission under which it is used>"
+    }
+  ]
+}

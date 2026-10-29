@@ -20,3 +20,7 @@ datasets/
 artifacts/
 logs/
 datasets_segmentation/
+
+# Operator-curated assistant corpus (licensed material; not committed by default)
+knowledge/sources/
+knowledge/manifest.json

@@ -38,7 +38,8 @@ def test_ignore_pixels_are_excluded_and_invalid_masks_rejected():
     m = np.full((50, 50), IGNORE, dtype=np.uint8)
     m[:, :25] = 1
     m[:5, :25] = 2
-    assert measure_from_class_map(m).affected_area_pct == 20.0
+    r = measure_from_class_map(m)
+    assert r.affected_area_pct == 10.0 and r.image_pixels == 1250  # 255 pixels excluded entirely
     with pytest.raises(ValueError):
         measure_from_class_map(np.full((10, 10), 7, dtype=np.uint8))
 

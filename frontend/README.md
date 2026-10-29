@@ -13,7 +13,7 @@ React + TypeScript + Tailwind CSS frontend for the AgriGuard AI backend (Phase 3
 ## Running locally
 ```bash
 npm install
-npm run dev        # http://localhost:5173, proxies /api and /storage to :8000 (see vite.config.ts)
+npm run dev        # http://localhost:5173, proxies /api to :8000 (see vite.config.ts)
 ```
 The backend (Phase 3) must be running at `http://localhost:8000` — see `backend/README`
 equivalent instructions in `docker/README.md`, or run it directly:

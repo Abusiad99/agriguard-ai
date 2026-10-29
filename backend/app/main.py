@@ -57,6 +57,10 @@ async def lifespan(app: FastAPI):
     _configure_logging()
     logger = logging.getLogger("agriguard.startup")
     logger.info("Starting %s (env=%s)", settings.app_name, settings.app_env)
+    if settings.app_env == "production" and (
+            settings.jwt_secret_key.startswith("CHANGE_ME") or len(settings.jwt_secret_key) < 32):
+        # The same secret signs access tokens and private media URLs.
+        raise RuntimeError("JWT_SECRET_KEY must be set to a random value of at least 32 characters in production.")
 
     if settings.database_url.startswith("sqlite"):
         # Test/dev convenience only: production schema is managed exclusively by

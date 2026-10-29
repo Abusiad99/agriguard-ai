@@ -14,7 +14,11 @@ backend can run them without torch):
                  focus measure (Pech-Pacheco et al., 2000). It also drops for images
                  with genuinely little texture, so it is a heuristic, not a blur
                  detector with guaranteed accuracy.
-  exposure       mean luminance and the fraction of clipped dark / bright pixels.
+  exposure       judged on the SUBJECT, not the whole frame: the mean luminance of
+                 mid-tone pixels (16..245) and how much of the frame they cover.
+                 A leaf scanned on white paper or photographed against a black
+                 studio background has large clipped areas but a well-exposed
+                 subject and must not be rejected (both occur in PlantWild).
   contrast       luminance standard deviation (near-uniform images).
   vegetation     fraction of pixels whose Excess-Green index is clearly positive
                  (Woebbecke et al., 1995). Diseased tissue, fruit and lesion close-
@@ -59,6 +63,10 @@ class QualityThresholds:
     bright_clip_reject: float = field(default_factory=lambda: _f("AGRIGUARD_QC_BRIGHT_CLIP_REJECT", 0.60))
     bright_clip_warn: float = field(default_factory=lambda: _f("AGRIGUARD_QC_BRIGHT_CLIP_WARN", 0.30))
     dark_clip_reject: float = field(default_factory=lambda: _f("AGRIGUARD_QC_DARK_CLIP_REJECT", 0.75))
+    # Subject (mid-tone) exposure: the subject itself must be too dark / washed out.
+    subject_dark_reject: float = field(default_factory=lambda: _f("AGRIGUARD_QC_SUBJECT_DARK_REJECT", 45.0))
+    subject_bright_reject: float = field(default_factory=lambda: _f("AGRIGUARD_QC_SUBJECT_BRIGHT_REJECT", 185.0))
+    min_subject_fraction: float = field(default_factory=lambda: _f("AGRIGUARD_QC_MIN_SUBJECT_FRACTION", 0.08))
     contrast_reject: float = field(default_factory=lambda: _f("AGRIGUARD_QC_CONTRAST_REJECT", 6.0))
     contrast_warn: float = field(default_factory=lambda: _f("AGRIGUARD_QC_CONTRAST_WARN", 18.0))
     vegetation_warn: float = field(default_factory=lambda: _f("AGRIGUARD_QC_VEGETATION_WARN", 0.03))
@@ -109,6 +117,7 @@ def compute_quality_metrics(image: Image.Image) -> Dict[str, float]:
         img = img.resize((max(1, round(width * scale)), max(1, round(height * scale))), Image.BILINEAR)
     rgb = np.asarray(img, dtype=np.float64)
     lum = 0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]
+    mid = (lum >= 16) & (lum <= 245)
 
     total = rgb[..., 0] + rgb[..., 1] + rgb[..., 2] + 1e-6
     r, g, b = rgb[..., 0] / total, rgb[..., 1] / total, rgb[..., 2] / total
@@ -126,6 +135,8 @@ def compute_quality_metrics(image: Image.Image) -> Dict[str, float]:
         "luminance_std": float(lum.std()),
         "dark_clip_fraction": float((lum < 16).mean()),
         "bright_clip_fraction": float((lum > 245).mean()),
+        "midtone_fraction": float(mid.mean()),
+        "midtone_mean_luminance": float(lum[mid].mean()) if mid.any() else 0.0,
         "vegetation_fraction": vegetation,
     }
 
@@ -148,23 +159,30 @@ def assess_image_quality(image: Image.Image, thresholds: Optional[QualityThresho
         add("resolution_low", "warning", "The image resolution is low; fine symptoms may be missed.",
             "If possible, retake the photo at a higher resolution.", m["min_side"], t.min_side_warn)
 
-    if m["luminance_std"] < t.contrast_reject:
-        add("no_detail", "reject", "The image is almost uniform and shows no visible detail.",
-            "Make sure the lens is not covered and the plant is in the frame.",
-            m["luminance_std"], t.contrast_reject)
-    elif m["mean_luminance"] < t.dark_mean_reject or m["dark_clip_fraction"] > t.dark_clip_reject:
+    # Darkness/overexposure are checked before "no detail": a very dark photo is also
+    # near-uniform, and "too dark" tells the user what to fix. Both are judged on the
+    # subject (mid-tones), so dark or white studio backgrounds are not penalized.
+    little_subject = m["midtone_fraction"] < t.min_subject_fraction
+    subject_dark = m["midtone_mean_luminance"] < t.subject_dark_reject
+    subject_washed_out = m["midtone_mean_luminance"] > t.subject_bright_reject
+    if (m["mean_luminance"] < t.dark_mean_reject or m["dark_clip_fraction"] > t.dark_clip_reject) and \
+            (little_subject or subject_dark):
         add("too_dark", "reject", "The image is too dark to see the plant tissue.",
             "Photograph in daylight or open shade; avoid night photos without light.",
-            m["mean_luminance"], t.dark_mean_reject)
-    elif m["bright_clip_fraction"] > t.bright_clip_reject:
+            m["midtone_mean_luminance"], t.subject_dark_reject)
+    elif m["bright_clip_fraction"] > t.bright_clip_reject and (little_subject or subject_washed_out):
         add("overexposed", "reject", "Large parts of the image are washed out by light.",
             "Avoid direct sun glare or flash on the leaf; shade the leaf or change the angle.",
             m["bright_clip_fraction"], t.bright_clip_reject)
+    elif m["luminance_std"] < t.contrast_reject:
+        add("no_detail", "reject", "The image is almost uniform and shows no visible detail.",
+            "Make sure the lens is not covered and the plant is in the frame.",
+            m["luminance_std"], t.contrast_reject)
     else:
-        if m["mean_luminance"] < t.dark_mean_warn:
+        if m["mean_luminance"] < t.dark_mean_warn and m["midtone_mean_luminance"] < t.dark_mean_warn + 20:
             add("dark", "warning", "The image is rather dark.", "More even light would help.",
                 m["mean_luminance"], t.dark_mean_warn)
-        if m["bright_clip_fraction"] > t.bright_clip_warn:
+        if m["bright_clip_fraction"] > t.bright_clip_warn and m["midtone_mean_luminance"] > t.subject_bright_reject - 25:
             add("partly_overexposed", "warning", "Some areas are overexposed.",
                 "Reduce glare by shading the leaf or changing the angle.",
                 m["bright_clip_fraction"], t.bright_clip_warn)
@@ -173,7 +191,7 @@ def assess_image_quality(image: Image.Image, thresholds: Optional[QualityThresho
                 "Avoid haze or backlight; photograph with light falling on the leaf.",
                 m["luminance_std"], t.contrast_warn)
 
-    if not any(i.code == "no_detail" for i in issues):
+    if not any(i.code in ("no_detail", "too_dark", "overexposed") for i in issues):
         if m["sharpness_laplacian_var"] < t.sharpness_reject:
             add("too_blurry", "reject", "The image is too blurry to examine leaf symptoms.",
                 "Hold the camera steady, tap the screen to focus on the leaf, and retake the photo.",

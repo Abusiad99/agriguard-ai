@@ -281,3 +281,82 @@ they can branch on, since a downstream scan must still complete without weather 
   rotated on every use (old token revoked, new token issued) per NFR-SEC-3.
 - Role checks (BR3/BR4) are enforced server-side on every role-gated route via a dependency/
   middleware, never trusted from client-supplied data.
+
+---
+
+## 12. Pipeline 2.0 additions (reliability, plant tracking, differential, assistant)
+
+All endpoints below require authentication. Every request is ownership-checked on the server: a resource that belongs to another user returns **404** for plants and **403** for diagnoses (as before). Request-validation failures use the standard `400 VALIDATION_ERROR` envelope.
+
+### 12.1 Changes to `POST /scans`
+
+**New optional form fields:**
+- `plant_profile_id`, or `new_plant_name` (sending both is a 400);
+- `note` (≤ 4000 characters).
+
+**Validation.** The upload is validated by its *decoded* content:
+- JPEG, PNG or WebP only (otherwise **415** `UNSUPPORTED_MEDIA_TYPE`);
+- at most 50 megapixels;
+- the size limit is enforced while streaming.
+
+**Image-quality gate.** The gate runs before anything is stored. An unusable photo returns `201` with:
+
+```json
+{ "status": "rejected_image_quality", "message": "...",
+  "quality": { "status": "rejected", "issues": [{ "code": "too_blurry", "severity": "reject",
+               "message": "...", "hint": "...", "metric": 3.1, "threshold": 12.0 }], "metrics": {...} } }
+```
+
+**Completed scans** return `DiagnosisResponse` with these additional fields:
+
+| field | meaning |
+|---|---|
+| `decision_status` | `confident` \| `uncertain` \| `inconclusive` \| `legacy` |
+| `decision` | top-1 probability, margin, normalised entropy, plant probability mass, `thresholds {confident, reject, plant_mass, source: validation\|env_override\|unvalidated_default, temperature, calibrated}` |
+| `predicted_label` / `predicted_display_name` | model top-1 class (null when inconclusive) |
+| `differential` | `model_candidates[]` (label, probability %, cause type, parts, patterns, regulated, `has_knowledge_base_entry`), `also_consider[]`, `not_assessable_by_model[]`, `follow_up_questions[]`, `answers`, `hints[]`, `expert_review_recommended`, `expert_review_reasons[]` |
+| `image_quality` | quality report (warnings for accepted photos) |
+| `original_image_url`, `heatmap_image_url`, `explanation.image_url` | **signed, expiring** `/api/v1/media/...` URLs |
+| `explanation` | `{method: "grad_cam", available, reason, target_label}` — model attention, not a lesion map |
+| `segmentation` | `{status: measured\|unavailable, reason, method, model_version, measurement{affected_area_pct, leaf/lesion pixels & regions}, severity{level, basis}, overlay_url, mask_url}` |
+| `measurement_basis` | `segmentation` \| `legacy_attention_estimate` \| null |
+| `model_version`, `pipeline_version`, `plant_profile{id,name}`, `limitations[]`, `is_legacy` | provenance |
+
+**Other behaviour:**
+- `disease`, `treatment` and `prevention_advice` are only filled for **confident** results that have a knowledge-base record.
+- `ai_analysis` (Gemini) is only produced for confident results.
+- Spraying advice is only given for a confident disease result.
+
+### 12.2 Diagnoses
+
+| Method & path | Purpose |
+|---|---|
+| `GET /diagnoses?decision_status=&plant_profile_id=&unassigned=` | Existing list endpoint with new filters (`date_to` is inclusive of the whole day) |
+| `GET /diagnoses/compare?a=&b=` | Now returns `{a, b, comparison}`. `comparison.summary` is one of `visible_area_increased`, `visible_area_decreased`, `no_clear_change_in_measurement`, `change_cannot_be_established`. A different prediction is never presented as a health change. |
+| `GET /diagnoses/{id}/notes` · `POST /diagnoses/{id}/notes` | Append-only notes: `user_note`, `treatment_applied`, `correction` (owner); `expert_feedback` (admin) |
+| `POST /diagnoses/{id}/follow-up` | `{answers: {question_id: option \| [options]}}`, validated against the question catalogue. Returns the updated `differential`. Probabilities are unchanged. |
+| `PUT /diagnoses/{id}/plant` | `{plant_profile_id \| null}`. Writes a `plant_link_change` audit note. |
+| `GET /model/info` | Supported classes and plants, `has_healthy_class`, threshold provenance, whether segmentation is available, the follow-up question catalogue |
+| `GET /media/{ref}?exp=&sig=` | Signed image delivery (HMAC-SHA256, expiring). Only `scans/`, `heatmaps/` and `segmentation/` references are valid. There is no public `/storage` path any more. |
+
+### 12.3 Plants — `/plants`
+
+| Method & path | Purpose |
+|---|---|
+| `POST /plants` | Create (`name` required; `crop_type`, `variety`, `planting_date`, `location_label`, `growing_environment`, `notes` optional) |
+| `GET /plants?search=&include_archived=&last_status=&page=&page_size≤100` | List own plants with observation count and latest status |
+| `GET /plants/{id}` · `PATCH /plants/{id}` · `DELETE /plants/{id}` | Read, update (including `archived: true/false`), archive (soft delete; observations kept) |
+| `GET /plants/{id}/timeline?date_from=&date_to=&decision_status=&page=` | Observations oldest-first with notes, `measurement_series` (genuine segmentation measurements only), `measurement_series_note`, `observations_without_measurement` |
+| `GET /plants/{id}/compare?a=&b=` | Comparison restricted to observations of this plant |
+
+### 12.4 Assistant — `/assistant`
+
+| Method & path | Purpose |
+|---|---|
+| `POST /assistant/chat` | `{message ≤ 2000, language: en\|ar, history ≤ 20 (last 6 used), diagnosis_id?, plant_profile_id?}` → `{mode: llm\|retrieval_only\|no_sources, answer, citations[], sources[], evidence_sufficient, recommends_expert, notices[], context_used}` |
+| `GET /assistant/sources` · `GET /assistant/sources/{id}` | Active corpus documents with provenance |
+
+### 12.5 Rate limits added
+
+- `POST /assistant/chat`: 20 requests per 5 minutes per IP (app) and 10 per minute (nginx edge).
+- 50 LLM-written answers per user per day (counted in the database).

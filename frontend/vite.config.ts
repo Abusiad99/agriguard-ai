@@ -3,10 +3,10 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 // AgriGuard AI — frontend build configuration.
-// Dev server proxies /api and /storage to the FastAPI backend (see
-// backend/app/main.py) so the frontend can call relative paths in both dev and
-// production (NGINX performs the equivalent proxying in production — see
-// docker/nginx/nginx.conf).
+// Dev server proxies /api to the FastAPI backend (see backend/app/main.py) so the
+// frontend can call relative paths in both dev and production (NGINX performs the
+// equivalent proxying in production — see docker/nginx/nginx.conf). Images are
+// served through signed URLs under /api/v1/media; there is no public /storage path.
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -18,10 +18,6 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
-        changeOrigin: true,
-      },
-      "/storage": {
         target: "http://localhost:8000",
         changeOrigin: true,
       },

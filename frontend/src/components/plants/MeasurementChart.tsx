@@ -8,7 +8,7 @@ import { formatDate } from "@/utils/format";
  * hollow. Each point links to its observation; a visually hidden table gives
  * screen-reader users the same data. */
 export function MeasurementChart({ points }: { points: MeasurementPoint[] }) {
-  const { locale } = useLocale();
+  const { locale, t } = useLocale();
   const W = 640;
   const H = 220;
   const pad = { l: 40, r: 16, t: 14, b: 30 };
@@ -17,14 +17,14 @@ export function MeasurementChart({ points }: { points: MeasurementPoint[] }) {
   const tMax = Math.max(...times);
   const span = tMax - tMin || 1;
   const yMax = Math.min(100, Math.max(10, Math.ceil(Math.max(...points.map((p) => p.affected_area_pct)) / 10) * 10));
-  const x = (t: number) => pad.l + (points.length === 1 ? (W - pad.l - pad.r) / 2 : ((t - tMin) / span) * (W - pad.l - pad.r));
+  const x = (ms: number) => pad.l + (points.length === 1 ? (W - pad.l - pad.r) / 2 : ((ms - tMin) / span) * (W - pad.l - pad.r));
   const y = (v: number) => pad.t + (1 - v / yMax) * (H - pad.t - pad.b);
   const path = points.map((p, i) => `${i ? "L" : "M"}${x(times[i]).toFixed(1)},${y(p.affected_area_pct).toFixed(1)}`).join(" ");
   const ticks = [0, yMax / 2, yMax];
 
   return (
     <div dir="ltr">
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Measured affected area over time">
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={t.plants.measurementChart}>
         {ticks.map((v) => (
           <g key={v}>
             <line x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} style={{ stroke: "rgb(var(--c-ink) / 0.08)" }} />
