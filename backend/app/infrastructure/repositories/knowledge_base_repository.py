@@ -60,6 +60,10 @@ class SqlAlchemyPlantRepository(IPlantRepository):
         models = self.db.execute(select(PlantModel).order_by(PlantModel.canonical_name)).scalars().all()
         return [_plant_to_entity(m) for m in models]
 
+    def get_by_id(self, plant_id: UUID) -> Optional[Plant]:
+        model = self.db.get(PlantModel, plant_id)
+        return _plant_to_entity(model) if model else None
+
 
 class SqlAlchemyDiseaseRepository(IDiseaseRepository):
     def __init__(self, db: Session):

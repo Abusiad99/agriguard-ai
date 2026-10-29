@@ -36,6 +36,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     _AUTH_PATHS = ("/api/v1/auth/login", "/api/v1/auth/register")
     _SCAN_PATHS = ("/api/v1/scans",)
+    _ASSISTANT_PATHS = ("/api/v1/assistant/chat",)
 
     def __init__(self, app):
         super().__init__(app)
@@ -46,6 +47,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return settings.rate_limit_auth_per_5min, 300
         if path in self._SCAN_PATHS:
             return settings.rate_limit_scan_per_hour, 3600
+        if path in self._ASSISTANT_PATHS:
+            return settings.rate_limit_assistant_per_5min, 300
         return settings.rate_limit_default_per_5min, 300
 
     async def dispatch(self, request: Request, call_next):

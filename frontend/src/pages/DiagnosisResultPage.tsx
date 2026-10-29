@@ -4,35 +4,51 @@ import { useLocale } from "@/context/LocaleContext";
 import { useAsync, errorMessage } from "@/hooks/useAsync";
 import { scansApi } from "@/lib/endpoints/scans";
 import { reportsApi } from "@/lib/endpoints/dashboard";
+import { plantsApi } from "@/lib/endpoints/plants";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Icon } from "@/components/ui/Icon";
 import { ProgressRing } from "@/components/ui/ProgressRing";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Input";
 import {
-  SeverityBadge,
-  AffectedAreaBar,
   WeatherCard,
   RecommendationList,
   TreatmentSection,
   AiAnalysisSection,
   BulletList,
   SubHeading,
+  SeverityBadge,
 } from "@/components/diagnosis/DiagnosisPanels";
-import { SEVERITY_COLOR, useSeverityLabel } from "@/components/diagnosis/severity";
+import {
+  AlsoConsiderPanel,
+  CandidatesPanel,
+  DecisionBanner,
+  ExpertReviewNotice,
+  FollowUpForm,
+  ImagePanels,
+  LimitationsList,
+  MeasurementPanel,
+  ProvenanceLine,
+  QualityNotes,
+  StatusBadge,
+} from "@/components/diagnosis/ReliabilityPanels";
 import { formatDate } from "@/utils/format";
-import { ApiError } from "@/types/api";
+import { labelDisplay, plantName } from "@/utils/labels";
+import { ApiError, type DiagnosisResponse, type ObservationNote } from "@/types/api";
 
 export default function DiagnosisResultPage() {
   const { id } = useParams<{ id: string }>();
   const { t, locale } = useLocale();
-  const severityLabel = useSeverityLabel();
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [override, setOverride] = useState<DiagnosisResponse | null>(null);
 
   const diagnosis = useAsync(() => scansApi.getDiagnosis(id!), [id]);
+  const modelInfo = useAsync(() => scansApi.modelInfo(), []);
 
   if (diagnosis.status === "loading") return <PageLoader label={t.common.loading} />;
   if (diagnosis.status === "error") {
@@ -41,9 +57,15 @@ export default function DiagnosisResultPage() {
     return <ErrorState message={msg} onRetry={diagnosis.refetch} />;
   }
 
-  const d = diagnosis.data;
-  const isHealthy = !d.disease;
-  const heroTone = isHealthy ? "primary" : d.severity_level ?? "moderate";
+  const d = override ?? diagnosis.data;
+  const status = d.decision_status ?? "legacy";
+  const confident = status === "confident";
+  const questions = modelInfo.status === "success" ? modelInfo.data.follow_up_questions : [];
+
+  const title =
+    status === "inconclusive"
+      ? t.status.noConditionNamed
+      : d.disease?.name ?? (d.predicted_label ? labelDisplay(d.predicted_label, t) : d.plant ? plantName(d.plant.name, t) : "—");
 
   const handleDownload = async () => {
     setDownloadError(null);
@@ -65,103 +87,85 @@ export default function DiagnosisResultPage() {
     }
   };
 
-  const downloadButton = (
-    <Button fullWidth size="lg" icon="download" isLoading={isDownloading} onClick={() => void handleDownload()}>
-      {isDownloading ? t.result.downloadingReport : t.result.downloadReport}
-    </Button>
-  );
+  const submitFollowUp = async (answers: Record<string, string | string[]>) => {
+    const differential = await scansApi.submitFollowUp(d.diagnosis_id, answers);
+    setOverride({ ...d, differential });
+  };
 
   return (
     <div className="flex flex-col gap-5 stagger">
       <Link
-        to="/history"
+        to={d.plant_profile ? `/plants/${d.plant_profile.id}` : "/history"}
         className="group inline-flex w-fit items-center gap-2 rounded-xl py-1 text-sm font-medium text-muted transition-colors hover:text-primary"
       >
         <span className="flip-rtl inline-flex">
           <Icon name="arrowLeft" className="h-4 w-4 transition-transform duration-300 ease-spring group-hover:-translate-x-1" />
         </span>
-        {t.result.backToHistory}
+        {d.plant_profile ? d.plant_profile.name : t.result.backToHistory}
       </Link>
 
       {/* ---------- Result hero ---------- */}
       <Card highlight className="relative overflow-hidden !p-6 sm:!p-8">
-        <div
-          className="pointer-events-none absolute -end-24 -top-24 h-72 w-72 rounded-full opacity-25 blur-3xl"
-          style={{ background: heroTone === "primary" ? "rgb(var(--c-primary))" : SEVERITY_COLOR[heroTone] }}
-          aria-hidden="true"
-        />
         <div className="relative grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
             <div className="mb-4 flex flex-wrap items-center gap-2.5">
-              {isHealthy ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-light px-3 py-1.5 text-sm font-semibold text-primary-dark ring-1 ring-inset ring-primary/20">
-                  <Icon name="check" className="h-4 w-4" />
-                  {t.dashboard.healthy}
-                </span>
-              ) : (
-                <SeverityBadge level={d.severity_level} />
-              )}
-              {d.disease?.type && (
-                <span className="rounded-full bg-ink/[0.05] px-3 py-1.5 text-sm font-medium capitalize text-muted ring-1 ring-inset ring-ink/10">
-                  {d.disease.type}
-                </span>
-              )}
+              <StatusBadge status={status} className="px-3 py-1.5 text-sm" />
+              {confident && d.severity_level && <SeverityBadge level={d.severity_level} />}
             </div>
-            <h1 className="text-balance font-display text-[2rem] font-semibold leading-tight text-ink sm:text-[2.5rem]">
-              {isHealthy ? t.result.healthyResult : d.disease?.name}
+            {status === "uncertain" && <p className="mb-1 text-sm font-medium text-muted">{t.status.leadingCandidate}</p>}
+            <h1 dir="auto" className="text-balance text-start font-display text-[1.9rem] font-semibold leading-tight text-ink sm:text-[2.35rem]">
+              {title}
             </h1>
-            <p className="mt-2 flex flex-wrap items-center gap-x-2 text-[0.98rem] text-muted">
-              <Icon name="leaf" className="h-4 w-4 text-primary" />
-              <span className="font-medium text-ink">{d.plant?.name}</span>
-              {d.plant?.scientific_name && <span className="italic">({d.plant.scientific_name})</span>}
-            </p>
+            {d.plant && (
+              <p className="mt-2 flex flex-wrap items-center gap-x-2 text-[0.98rem] text-muted">
+                <Icon name="leaf" className="h-4 w-4 text-primary" />
+                <span className="font-medium text-ink">{plantName(d.plant.name, t)}</span>
+                {d.plant.scientific_name && <span className="italic">({d.plant.scientific_name})</span>}
+              </p>
+            )}
             {d.diagnosed_at && (
               <p className="mt-1.5 flex items-center gap-2 text-sm text-muted">
                 <Icon name="calendar" className="h-4 w-4" />
                 {t.result.diagnosedOn} {formatDate(d.diagnosed_at, locale)}
               </p>
             )}
-            {d.affected_area_pct != null && d.healthy_area_pct != null && (
-              <div className="mt-7 max-w-xl">
-                <AffectedAreaBar affectedPct={d.affected_area_pct} healthyPct={d.healthy_area_pct} severity={d.severity_level} />
-              </div>
-            )}
           </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-8 sm:gap-10">
-            <ProgressRing value={d.confidence_score} label={t.result.confidence} size={136} />
-            {d.severity_level && d.affected_area_pct != null && (
-              <ProgressRing
-                value={d.affected_area_pct}
-                label={t.result.severity}
-                size={136}
-                valueLabel={severityLabel(d.severity_level)}
-                sublabel={`${d.affected_area_pct.toFixed(0)}%`}
-                color={SEVERITY_COLOR[d.severity_level]}
-              />
-            )}
-          </div>
+          {status !== "inconclusive" && (
+            <div className="flex justify-center">
+              <ProgressRing value={d.confidence_score} label={t.result.confidence} size={136} />
+            </div>
+          )}
         </div>
       </Card>
 
-      {d.low_confidence_flag && <Alert tone="warning">{t.result.lowConfidence}</Alert>}
+      <DecisionBanner d={d} />
+      <QualityNotes quality={d.image_quality} />
+      <ExpertReviewNotice differential={d.differential} />
 
-      {d.heatmap_image_url && (
-        <div className="glass overflow-hidden rounded-panel p-2">
-          <img src={d.heatmap_image_url} alt="Highlighted diagnosis region" className="w-full rounded-[1.1rem]" />
-        </div>
-      )}
-
-      {/* ---------- Details ---------- */}
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex flex-col gap-5">
-          {!isHealthy && d.disease && (
+          {d.differential && d.differential.model_candidates.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle icon="target">{t.reliability.candidatesTitle}</CardTitle>
+              </CardHeader>
+              <CandidatesPanel differential={d.differential} />
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle icon="eye">{t.reliability.imagesTitle}</CardTitle>
+            </CardHeader>
+            <ImagePanels d={d} />
+          </Card>
+
+          {confident && d.disease && (
             <Card>
               <CardHeader>
                 <CardTitle icon="bug">{t.result.title}</CardTitle>
               </CardHeader>
               <p dir="auto" className="text-start text-[0.98rem] leading-relaxed text-ink">{d.disease.description}</p>
-
               <div className="mt-6 grid gap-6 sm:grid-cols-2">
                 {d.disease.symptoms.length > 0 && (
                   <div>
@@ -176,15 +180,23 @@ export default function DiagnosisResultPage() {
                   </div>
                 )}
               </div>
-              {d.disease.transmission_method && (
-                <div className="mt-6 flex items-start gap-3 rounded-2xl bg-ink/[0.035] p-4">
-                  <Icon name="spread" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                  <p className="text-sm leading-relaxed text-ink">
-                    <span className="font-semibold text-primary-dark">{t.result.transmission}: </span>
-                    <span dir="auto">{d.disease.transmission_method}</span>
-                  </p>
+            </Card>
+          )}
+
+          {d.differential && (d.differential.also_consider.length > 0 || d.differential.follow_up_questions.length > 0) && (
+            <Card>
+              <CardHeader>
+                <CardTitle icon="question">{t.reliability.followUpTitle}</CardTitle>
+              </CardHeader>
+              <div className="flex flex-col gap-6">
+                <div>
+                  <SubHeading icon="info">{t.reliability.alsoConsiderTitle}</SubHeading>
+                  <AlsoConsiderPanel differential={d.differential} />
                 </div>
-              )}
+                {questions.length > 0 && !d.is_legacy && (
+                  <FollowUpForm differential={d.differential} questions={questions} onSubmit={submitFollowUp} />
+                )}
+              </div>
             </Card>
           )}
 
@@ -197,7 +209,7 @@ export default function DiagnosisResultPage() {
             </Card>
           )}
 
-          {d.treatment && (
+          {confident && d.treatment && (
             <Card>
               <CardHeader>
                 <CardTitle icon="beaker">{t.result.treatment}</CardTitle>
@@ -206,7 +218,7 @@ export default function DiagnosisResultPage() {
             </Card>
           )}
 
-          {d.prevention_advice.length > 0 && (
+          {confident && d.prevention_advice.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle icon="shieldCheck">{t.result.prevention}</CardTitle>
@@ -214,44 +226,46 @@ export default function DiagnosisResultPage() {
               <BulletList items={d.prevention_advice} icon="check" />
             </Card>
           )}
+
+          <NotesCard diagnosisId={d.diagnosis_id} />
+
+          <Card>
+            <CardHeader>
+              <CardTitle icon="info">{t.reliability.limitationsTitle}</CardTitle>
+            </CardHeader>
+            <LimitationsList codes={d.limitations ?? []} />
+            <div className="mt-4">
+              <ProvenanceLine d={d} />
+            </div>
+          </Card>
         </div>
 
         <aside className="flex flex-col gap-5">
-          <div className="hidden lg:block">
-            {downloadError && (
-              <div className="mb-3">
-                <Alert tone="error">{downloadError}</Alert>
-              </div>
-            )}
-            {downloadButton}
+          <div className="hidden flex-col gap-3 lg:flex">
+            {downloadError && <Alert tone="error">{downloadError}</Alert>}
+            <Button fullWidth size="lg" icon="download" isLoading={isDownloading} onClick={() => void handleDownload()}>
+              {isDownloading ? t.result.downloadingReport : t.result.downloadReport}
+            </Button>
+            <ButtonLink to={`/assistant?diagnosis=${d.diagnosis_id}`} variant="glass" icon="chat" fullWidth>
+              {t.reliability.askAssistant}
+            </ButtonLink>
           </div>
 
-          {d.recommendation && (
+          <Card>
+            <CardHeader>
+              <CardTitle icon="chart">{t.reliability.measurementTitle}</CardTitle>
+            </CardHeader>
+            <MeasurementPanel d={d} />
+          </Card>
+
+          <PlantLinkCard d={d} onChange={setOverride} />
+
+          {d.recommendation && (d.recommendation.irrigation_advice || d.recommendation.spraying_advice || d.recommendation.fertilizer_advice) && (
             <Card>
               <CardHeader>
                 <CardTitle icon="lightning">{t.result.recommendation}</CardTitle>
               </CardHeader>
               <RecommendationList recommendation={d.recommendation} />
-            </Card>
-          )}
-
-          {(d.recovery_probability != null || d.estimated_recovery_time) && (
-            <Card>
-              <CardHeader>
-                <CardTitle icon="heart">{t.result.recovery}</CardTitle>
-              </CardHeader>
-              <div className="flex items-center gap-5">
-                {d.recovery_probability != null && <ProgressRing value={d.recovery_probability} size={92} strokeWidth={8} />}
-                <div className="flex flex-col gap-3">
-                  {d.recovery_probability != null && <p className="text-sm text-muted">{t.result.recoveryProbability}</p>}
-                  {d.estimated_recovery_time && (
-                    <div>
-                      <p className="text-xs text-muted">{t.result.recoveryTime}</p>
-                      <p className="font-display text-xl font-semibold text-ink">{d.estimated_recovery_time}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
             </Card>
           )}
 
@@ -261,39 +275,151 @@ export default function DiagnosisResultPage() {
             </CardHeader>
             <WeatherCard weather={d.weather} />
           </Card>
-
-          {d.pests_detected.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle icon="bug">{t.result.pestsDetected}</CardTitle>
-              </CardHeader>
-              <ul className="flex flex-col gap-2.5">
-                {d.pests_detected.map((p) => (
-                  <li key={p.name} className="rounded-2xl bg-ink/[0.035] px-4 py-3">
-                    <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="font-medium text-ink">{p.name}</span>
-                      <span className="font-data font-semibold tabular-nums text-muted">{p.confidence.toFixed(1)}%</span>
-                    </div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink/[0.07]">
-                      <div className="h-full origin-start animate-grow-x rounded-full bg-severity-moderate" style={{ width: `${p.confidence}%` }} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
         </aside>
       </div>
 
-      {/* Mobile: report download stays within thumb reach above the tab bar. */}
-      <div className="sticky bottom-24 z-20 lg:hidden">
-        {downloadError && (
-          <div className="mb-2">
-            <Alert tone="error">{downloadError}</Alert>
-          </div>
-        )}
-        {downloadButton}
+      {/* Mobile: actions stay within thumb reach above the tab bar. */}
+      <div className="sticky bottom-24 z-20 flex flex-col gap-2 lg:hidden">
+        {downloadError && <Alert tone="error">{downloadError}</Alert>}
+        <div className="flex gap-2">
+          <Button fullWidth size="lg" icon="download" isLoading={isDownloading} onClick={() => void handleDownload()}>
+            {isDownloading ? t.result.downloadingReport : t.result.downloadReport}
+          </Button>
+          <ButtonLink to={`/assistant?diagnosis=${d.diagnosis_id}`} variant="glass" size="lg" icon="chat" aria-label={t.reliability.askAssistant}>
+            <span className="sr-only">{t.reliability.askAssistant}</span>
+          </ButtonLink>
+        </div>
       </div>
     </div>
+  );
+}
+
+function PlantLinkCard({ d, onChange }: { d: DiagnosisResponse; onChange: (d: DiagnosisResponse) => void }) {
+  const { t } = useLocale();
+  const plants = useAsync(() => plantsApi.list({ page_size: 100 }), []);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const assign = async (plantId: string | null) => {
+    setSaving(true);
+    setError(null);
+    try {
+      onChange(await scansApi.assignPlant(d.diagnosis_id, plantId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.common.unknownError);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle icon="leaf">{t.reliability.linkedPlant}</CardTitle>
+      </CardHeader>
+      {d.plant_profile ? (
+        <div className="flex items-center justify-between gap-3">
+          <Link to={`/plants/${d.plant_profile.id}`} className="font-medium text-primary hover:underline">
+            {d.plant_profile.name}
+          </Link>
+          <Button variant="ghost" size="sm" isLoading={saving} onClick={() => void assign(null)}>
+            {t.reliability.unlink}
+          </Button>
+        </div>
+      ) : (
+        <Select
+          compact
+          aria-label={t.reliability.linkToPlant}
+          value=""
+          disabled={saving || plants.status !== "success"}
+          onChange={(e) => e.target.value && void assign(e.target.value)}
+        >
+          <option value="">{t.reliability.linkToPlant}</option>
+          {plants.status === "success" &&
+            plants.data.items.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+        </Select>
+      )}
+      {error && <div className="mt-3"><Alert tone="error">{error}</Alert></div>}
+    </Card>
+  );
+}
+
+function NotesCard({ diagnosisId }: { diagnosisId: string }) {
+  const { t, locale } = useLocale();
+  const notes = useAsync(() => scansApi.listNotes(diagnosisId), [diagnosisId]);
+  const [body, setBody] = useState("");
+  const [type, setType] = useState<"user_note" | "treatment_applied" | "correction">("user_note");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [added, setAdded] = useState<ObservationNote[]>([]);
+
+  const submit = async () => {
+    if (!body.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const note = await scansApi.addNote(diagnosisId, type, body.trim());
+      setAdded((prev) => [...prev, note]);
+      setBody("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.common.unknownError);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const items = [...(notes.status === "success" ? notes.data : []), ...added];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle icon="document">{t.reliability.notesTitle}</CardTitle>
+      </CardHeader>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted">{t.reliability.noNotes}</p>
+      ) : (
+        <ul className="flex flex-col gap-2.5">
+          {items.map((n) => (
+            <li key={n.id} className="rounded-2xl bg-ink/[0.035] px-4 py-3 text-sm">
+              <p className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                <span className="font-semibold text-ink">{t.reliability.noteTypes[n.note_type] ?? n.note_type}</span>
+                {n.created_at && <span>{formatDate(n.created_at, locale)}</span>}
+              </p>
+              {n.body && <p dir="auto" className="mt-1 whitespace-pre-wrap text-start text-ink">{n.body}</p>}
+              {n.note_type === "follow_up" && n.data && typeof n.data === "object" && "answers" in n.data && (
+                <p className="mt-1 text-xs text-muted">
+                  {Object.entries((n.data as { answers: Record<string, string | string[]> }).answers)
+                    .map(([q, a]) => `${t.reliability.questions[q] ?? q} ${(Array.isArray(a) ? a : [a]).map((x) => t.reliability.options[x] ?? x).join(", ")}`)
+                    .join(" · ")}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-4 flex flex-col gap-3">
+        <Select compact aria-label={t.reliability.addNote} value={type} onChange={(e) => setType(e.target.value as typeof type)}>
+          <option value="user_note">{t.reliability.noteTypes.user_note}</option>
+          <option value="treatment_applied">{t.reliability.noteTypes.treatment_applied}</option>
+          <option value="correction">{t.reliability.noteTypes.correction}</option>
+        </Select>
+        <Textarea
+          rows={3}
+          maxLength={4000}
+          aria-label={t.reliability.addNote}
+          placeholder={t.reliability.notePlaceholder}
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+        />
+        {error && <Alert tone="error">{error}</Alert>}
+        <Button size="sm" icon="plus" className="w-fit" isLoading={saving} disabled={!body.trim()} onClick={() => void submit()}>
+          {t.reliability.addNote}
+        </Button>
+      </div>
+    </Card>
   );
 }

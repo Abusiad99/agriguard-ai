@@ -15,10 +15,13 @@ explicitly opts into detection training with bbox data present.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import timm
 import torch
 import torch.nn as nn
+
+from ai.config import CONFIG
 
 logger = logging.getLogger("agriguard.models.architectures")
 
@@ -53,10 +56,43 @@ def build_classifier(architecture: str, num_classes: int, pretrained: bool = Tru
             f"{sorted(SUPPORTED_ARCHITECTURES.keys())}"
         )
     timm_name = SUPPORTED_ARCHITECTURES[architecture]
-    logger.info("Building classifier: architecture=%s (timm=%s), num_classes=%d, pretrained=%s",
-                architecture, timm_name, num_classes, pretrained)
+    local_weights = CONFIG.train.pretrained_weights_path if pretrained else ""
+    logger.info("Building classifier: architecture=%s (timm=%s), num_classes=%d, pretrained=%s%s",
+                architecture, timm_name, num_classes, pretrained,
+                f" (local weights: {local_weights})" if local_weights else "")
+    if local_weights:
+        model = timm.create_model(timm_name, pretrained=False, num_classes=num_classes)
+        load_backbone_weights(model, Path(local_weights))
+        return model
     model = timm.create_model(timm_name, pretrained=pretrained, num_classes=num_classes)
     return model
+
+
+def load_backbone_weights(model: nn.Module, weights_path: Path) -> None:
+    """Load an ImageNet checkpoint into `model`, skipping any tensor whose shape does
+    not match (i.e. the 1000-class ImageNet head, replaced by our own head).
+
+    Fails loudly if the file is missing or if almost nothing matched, because a
+    silent fallback to random weights would invalidate every downstream metric.
+    """
+    if not weights_path.is_file():
+        raise FileNotFoundError(f"AGRIGUARD_PRETRAINED_WEIGHTS points to a missing file: {weights_path}")
+    state = torch.load(weights_path, map_location="cpu", weights_only=True)
+    if isinstance(state, dict) and "state_dict" in state and isinstance(state["state_dict"], dict):
+        state = state["state_dict"]
+    own = model.state_dict()
+    compatible = {k: v for k, v in state.items() if k in own and own[k].shape == v.shape}
+    skipped = sorted(k for k in state if k not in compatible)
+    missing = sorted(k for k in own if k not in compatible)
+    model.load_state_dict(compatible, strict=False)
+    coverage = len(compatible) / max(1, len(own))
+    logger.info("Loaded %d/%d backbone tensors from %s (skipped from checkpoint: %s; left at init: %s)",
+                len(compatible), len(own), weights_path, skipped[:6], missing[:6])
+    if coverage < 0.9:
+        raise ValueError(
+            f"Only {coverage:.0%} of the model's tensors matched {weights_path.name}; "
+            "the checkpoint does not belong to this architecture."
+        )
 
 
 def freeze_backbone(model: nn.Module) -> None:

@@ -21,17 +21,25 @@ def get_explainer(architecture: str) -> Explainer:
     return GradCAM()
 
 
-def render_heatmap_overlay(original_image: Image.Image, heatmap: np.ndarray, alpha: float = 0.45) -> Image.Image:
-    """Overlay a normalized [0,1] heatmap as a red-toned heat layer on the original
-    image, resized to match. Returns a new PIL Image (RGB)."""
-    original = original_image.convert("RGB").resize((heatmap.shape[1], heatmap.shape[0]))
-    base = np.array(original).astype(np.float32)
+def _heat_colormap(values: np.ndarray) -> np.ndarray:
+    """Map [0,1] -> RGB with a perceptually ordered blue->cyan->yellow->red ramp."""
+    stops = np.array([0.0, 0.35, 0.65, 1.0])
+    colors = np.array([[49, 54, 149], [69, 189, 207], [254, 224, 76], [215, 25, 28]], dtype=np.float32)
+    out = np.empty(values.shape + (3,), dtype=np.float32)
+    for c in range(3):
+        out[..., c] = np.interp(values, stops, colors[:, c])
+    return out
 
-    heat_rgb = np.zeros_like(base)
-    heat_rgb[..., 0] = heatmap * 255.0  # red channel encodes intensity
-    heat_rgb[..., 1] = (1 - heatmap) * 60.0
-    heat_rgb[..., 2] = (1 - heatmap) * 60.0
 
-    blended = (1 - alpha) * base + alpha * heat_rgb
-    blended = np.clip(blended, 0, 255).astype(np.uint8)
-    return Image.fromarray(blended)
+def render_heatmap_overlay(original_image: Image.Image, heatmap: np.ndarray, alpha: float = 0.55) -> Image.Image:
+    """Overlay a normalized [0,1] model-attention map on the photo at the photo's own
+    resolution. Opacity scales with attention, so low-attention areas keep the
+    original photo visible. This visualizes where the classifier "looked"; it is not
+    a lesion mask (see ai/explainability/gradcam.py)."""
+    original = original_image.convert("RGB")
+    heat = Image.fromarray(np.clip(heatmap * 255.0, 0, 255).astype(np.uint8)).resize(original.size, Image.BILINEAR)
+    h = np.asarray(heat, dtype=np.float32) / 255.0
+    base = np.asarray(original, dtype=np.float32)
+    weight = (alpha * np.clip((h - 0.15) / 0.85, 0.0, 1.0))[..., None]
+    blended = (1.0 - weight) * base + weight * _heat_colormap(h)
+    return Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))

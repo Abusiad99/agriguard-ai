@@ -19,7 +19,6 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.infrastructure.db.models import Base
@@ -112,10 +111,13 @@ app.add_middleware(LoggingMiddleware)
 # --- Exception handlers ---
 register_exception_handlers(app)
 
-# --- Static file mounting for locally-stored images/heatmaps (dev convenience;
-#     production typically serves these via NGINX or an S3-compatible CDN) ---
+# --- Stored files (photos, attention maps, segmentation overlays, PDF reports) ---
+# Deliberately NOT mounted as public static files any more: the former
+# `app.mount("/storage", StaticFiles(...))` let anyone who knew or guessed a path read
+# other users' photos and reports. Images are served via signed, expiring URLs
+# (/api/v1/media/..., see media_signer.py); reports via the authenticated
+# /api/v1/reports/{id} endpoint.
 Path(settings.local_storage_dir).mkdir(parents=True, exist_ok=True)
-app.mount("/storage", StaticFiles(directory=settings.local_storage_dir), name="storage")
 
 # --- Routers ---
 app.include_router(health_router)  # public, unversioned: GET /health

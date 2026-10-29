@@ -1,5 +1,5 @@
 import { useRef, useState, type DragEvent, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useLocale } from "@/context/LocaleContext";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
@@ -7,11 +7,17 @@ import { Card, PageHeader } from "@/components/ui/Card";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { ScanRing } from "@/components/ui/Spinner";
 import { Switch } from "@/components/ui/Switch";
+import { Input, Textarea } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { QualityIssueList } from "@/components/diagnosis/ReliabilityPanels";
+import { useAsync } from "@/hooks/useAsync";
 import { scansApi } from "@/lib/endpoints/scans";
-import { ApiError, isUnrecognizedPlant } from "@/types/api";
+import { plantsApi } from "@/lib/endpoints/plants";
+import { ApiError, isQualityRejected, isUnrecognizedPlant, type ImageQuality } from "@/types/api";
 import { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES } from "@/utils/validators";
 
-type Stage = "idle" | "preview" | "analyzing" | "unrecognized";
+type Stage = "idle" | "preview" | "analyzing" | "unrecognized" | "rejected";
+type PlantMode = "none" | "existing" | "new";
 
 export default function ScanPage() {
   const { t } = useLocale();
@@ -25,12 +31,21 @@ export default function ScanPage() {
   const [attachLocation, setAttachLocation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [searchParams] = useSearchParams();
+  const presetPlant = searchParams.get("plant");
+  const [plantMode, setPlantMode] = useState<PlantMode>(presetPlant ? "existing" : "none");
+  const [plantId, setPlantId] = useState<string>(presetPlant ?? "");
+  const [newPlantName, setNewPlantName] = useState("");
+  const [note, setNote] = useState("");
+  const [rejection, setRejection] = useState<ImageQuality | null>(null);
+  const plants = useAsync(() => plantsApi.list({ page_size: 100 }), []);
 
   const resetToIdle = () => {
     setStage("idle");
     setFile(null);
     setPreviewUrl(null);
     setError(null);
+    setRejection(null);
   };
 
   const handleFileSelected = (selected: File | undefined) => {
@@ -88,8 +103,16 @@ export default function ScanPage() {
         latitude: position?.coords.latitude,
         longitude: position?.coords.longitude,
         attachLocation,
+        plantProfileId: plantMode === "existing" && plantId ? plantId : undefined,
+        newPlantName: plantMode === "new" && newPlantName.trim() ? newPlantName.trim() : undefined,
+        note: note.trim() || undefined,
       });
 
+      if (isQualityRejected(result)) {
+        setRejection(result.quality);
+        setStage("rejected");
+        return;
+      }
       if (isUnrecognizedPlant(result)) {
         setStage("unrecognized");
         return;
@@ -101,6 +124,7 @@ export default function ScanPage() {
       if (err instanceof ApiError) {
         if (err.code === "INVALID_IMAGE") setError(t.scan.invalidImage);
         else if (err.code === "FILE_TOO_LARGE") setError(t.scan.fileTooLarge);
+        else if (err.code === "UNSUPPORTED_MEDIA_TYPE") setError(t.scan.unsupportedFormat);
         else setError(err.message);
       } else {
         setError(t.common.unknownError);
@@ -112,7 +136,10 @@ export default function ScanPage() {
     { icon: "scan", text: t.scan.tip1 },
     { icon: "sun", text: t.scan.tip2 },
     { icon: "target", text: t.scan.tip3 },
+    { icon: "leaf", text: t.scan.tip4 },
   ];
+
+  const canSubmit = plantMode !== "existing" || Boolean(plantId);
 
   return (
     <div className="flex flex-col gap-8 stagger">
@@ -203,6 +230,53 @@ export default function ScanPage() {
               ) : (
                 <div className="flex flex-col gap-4 px-1 pb-1">
                   {error && <Alert tone="error">{error}</Alert>}
+                  <fieldset className="flex flex-col gap-3 rounded-2xl border border-line/80 p-4">
+                    <legend className="px-1 text-sm font-semibold text-ink">{t.scan.plantSection}</legend>
+                    <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t.scan.plantSection}>
+                      {(["none", "existing", "new"] as PlantMode[]).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          role="radio"
+                          aria-checked={plantMode === mode}
+                          onClick={() => setPlantMode(mode)}
+                          className={`rounded-full px-3.5 py-1.5 text-sm ring-1 ring-inset transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary
+                            ${plantMode === mode ? "bg-primary text-white ring-primary" : "bg-surface/60 text-ink ring-line hover:ring-primary/40"}`}
+                        >
+                          {mode === "none" ? t.scan.plantNone : mode === "existing" ? t.scan.plantExisting : t.scan.plantNew}
+                        </button>
+                      ))}
+                    </div>
+                    {plantMode === "existing" && (
+                      <Select compact aria-label={t.scan.plantChoose} value={plantId} onChange={(e) => setPlantId(e.target.value)}>
+                        <option value="">{t.scan.plantChoose}</option>
+                        {plants.status === "success" &&
+                          plants.data.items.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                      </Select>
+                    )}
+                    {plantMode === "new" && (
+                      <Input
+                        icon="leaf"
+                        maxLength={100}
+                        aria-label={t.scan.plantNewName}
+                        placeholder={t.scan.plantNewName}
+                        value={newPlantName}
+                        onChange={(e) => setNewPlantName(e.target.value)}
+                      />
+                    )}
+                  </fieldset>
+                  <Textarea
+                    rows={2}
+                    maxLength={4000}
+                    label={t.scan.noteLabel}
+                    placeholder={t.scan.notePlaceholder}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                  />
                   <Switch
                     checked={attachLocation}
                     onChange={setAttachLocation}
@@ -213,12 +287,28 @@ export default function ScanPage() {
                     <Button variant="glass" size="lg" icon="refresh" onClick={resetToIdle}>
                       {t.scan.retake}
                     </Button>
-                    <Button size="lg" fullWidth icon="sparkles" onClick={() => void handleSubmit()}>
+                    <Button size="lg" fullWidth icon="sparkles" disabled={!canSubmit} onClick={() => void handleSubmit()}>
                       {t.scan.submit}
                     </Button>
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {stage === "rejected" && rejection && (
+            <div className="flex min-h-[22rem] flex-col items-center justify-center gap-4 px-6 py-10 text-center animate-scale-in">
+              <span className="flex h-20 w-20 items-center justify-center rounded-3xl bg-severity-mild-bg text-severity-mild ring-1 ring-inset ring-severity-mild/20">
+                <Icon name="photo" className="h-9 w-9" />
+              </span>
+              <p className="font-display text-xl font-semibold text-ink">{t.scan.qualityRejectedTitle}</p>
+              <p className="max-w-md text-sm leading-relaxed text-muted">{t.scan.qualityRejectedBody}</p>
+              <div className="w-full max-w-md rounded-2xl bg-ink/[0.035] p-4 text-start">
+                <QualityIssueList quality={rejection} />
+              </div>
+              <Button size="lg" icon="camera" className="mt-2" onClick={resetToIdle}>
+                {t.scan.tryAgain}
+              </Button>
             </div>
           )}
 

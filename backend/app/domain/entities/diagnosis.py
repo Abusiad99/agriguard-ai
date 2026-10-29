@@ -103,6 +103,22 @@ class Diagnosis:
     supersedes_diagnosis_id: Optional[UUID] = None
     diagnosed_at: Optional[datetime] = None
 
+    # --- Observation provenance (pipeline >= 2.0; None / "legacy" for older rows) ---
+    plant_profile_id: Optional[UUID] = None
+    decision_status: Optional[str] = None      # confident | uncertain | inconclusive | legacy
+    predicted_label: Optional[str] = None      # model's top-1 canonical label ("plant___condition")
+    candidates: List[dict] = field(default_factory=list)
+    decision: dict = field(default_factory=dict)
+    image_quality: dict = field(default_factory=dict)
+    explanation: dict = field(default_factory=dict)
+    segmentation: dict = field(default_factory=dict)
+    segmentation_mask_ref: Optional[str] = None
+    segmentation_overlay_ref: Optional[str] = None
+    severity_method: Optional[str] = None
+    model_version: Optional[str] = None
+    pipeline_version: Optional[str] = None
+    differential: dict = field(default_factory=dict)
+
     pest_detections: List[PestDetection] = field(default_factory=list)
     weather_snapshot: Optional[WeatherSnapshot] = None
     recommendation: Optional[Recommendation] = None
@@ -112,3 +128,14 @@ class Diagnosis:
     def is_reviewable_low_confidence(self) -> bool:
         """BR1."""
         return self.low_confidence_flag and not self.unrecognized_plant
+
+    @property
+    def is_legacy(self) -> bool:
+        return self.decision_status in (None, "legacy")
+
+    @property
+    def has_segmentation_measurement(self) -> bool:
+        """True only for affected-area values measured from leaf/lesion segmentation —
+        not for legacy Grad-CAM-threshold numbers."""
+        return (self.affected_area_pct is not None and self.severity_method is not None
+                and not self.severity_method.startswith("legacy"))

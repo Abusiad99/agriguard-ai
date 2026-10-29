@@ -75,3 +75,8 @@ class ServiceUnavailableError(AgriGuardError):
 
 class DosageSourceRequiredError(UnprocessableEntityError):
     code = "DOSAGE_SOURCE_REQUIRED"
+
+
+class UnsupportedMediaTypeError(AgriGuardError):
+    code = "UNSUPPORTED_MEDIA_TYPE"
+    status_code = 415

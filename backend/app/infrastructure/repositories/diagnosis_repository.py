@@ -6,11 +6,11 @@ production performance optimization referenced in NFR-PERF-3 for large accounts,
 this repository can be extended to read from it directly once query volume warrants."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, time, timedelta, timezone
 from typing import List, Optional, Tuple
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.domain.entities.diagnosis import AiAnalysis, Diagnosis, PestDetection, Recommendation, Report, SeverityLevel, WeatherSnapshot
@@ -26,6 +26,16 @@ from app.infrastructure.db.models.diagnosis_model import (
 from app.infrastructure.db.models.knowledge_base_model import DiseaseModel, PlantModel
 
 
+def _like(term: str) -> str:
+    """ILIKE pattern for a user-supplied search term with LIKE wildcards escaped."""
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _start_of_day(d: date) -> datetime:
+    return datetime.combine(d, time.min, tzinfo=timezone.utc)
+
+
 def _to_entity(m: DiagnosisModel) -> Diagnosis:
     return Diagnosis(
         id=m.id, user_id=m.user_id, plant_id=m.plant_id, disease_id=m.disease_id,
@@ -39,6 +49,20 @@ def _to_entity(m: DiagnosisModel) -> Diagnosis:
         location_lat=float(m.location_lat) if m.location_lat is not None else None,
         location_lon=float(m.location_lon) if m.location_lon is not None else None,
         supersedes_diagnosis_id=m.supersedes_diagnosis_id, diagnosed_at=m.diagnosed_at,
+        plant_profile_id=m.plant_profile_id,
+        decision_status=m.decision_status,
+        predicted_label=m.predicted_label,
+        candidates=m.candidates_json or [],
+        decision=m.decision_json or {},
+        image_quality=m.image_quality_json or {},
+        explanation=m.explanation_json or {},
+        segmentation=m.segmentation_json or {},
+        segmentation_mask_ref=m.segmentation_mask_ref,
+        segmentation_overlay_ref=m.segmentation_overlay_ref,
+        severity_method=m.severity_method,
+        model_version=m.model_version,
+        pipeline_version=m.pipeline_version,
+        differential=m.differential_json or {},
         pest_detections=[
             PestDetection(id=p.id, diagnosis_id=p.diagnosis_id, pest_name=p.pest_name,
                           confidence=float(p.confidence), bbox=p.bbox_json)
@@ -101,6 +125,14 @@ class SqlAlchemyDiagnosisRepository(IDiagnosisRepository):
             heatmap_image_ref=diagnosis.heatmap_image_ref, low_confidence_flag=diagnosis.low_confidence_flag,
             unrecognized_plant=diagnosis.unrecognized_plant, location_lat=diagnosis.location_lat,
             location_lon=diagnosis.location_lon, supersedes_diagnosis_id=diagnosis.supersedes_diagnosis_id,
+            plant_profile_id=diagnosis.plant_profile_id, decision_status=diagnosis.decision_status,
+            predicted_label=diagnosis.predicted_label, candidates_json=diagnosis.candidates or None,
+            decision_json=diagnosis.decision or None, image_quality_json=diagnosis.image_quality or None,
+            explanation_json=diagnosis.explanation or None, segmentation_json=diagnosis.segmentation or None,
+            segmentation_mask_ref=diagnosis.segmentation_mask_ref,
+            segmentation_overlay_ref=diagnosis.segmentation_overlay_ref,
+            severity_method=diagnosis.severity_method, model_version=diagnosis.model_version,
+            pipeline_version=diagnosis.pipeline_version, differential_json=diagnosis.differential or None,
         )
         self.db.add(model)
         self.db.flush()  # obtain model.id before adding children
@@ -157,25 +189,70 @@ class SqlAlchemyDiagnosisRepository(IDiagnosisRepository):
 
     def list_for_user(self, user_id: UUID, plant: Optional[str], disease: Optional[str],
                        date_from: Optional[date], date_to: Optional[date],
-                       page: int, page_size: int) -> Tuple[List[Diagnosis], int]:
+                       page: int, page_size: int, decision_status: Optional[str] = None,
+                       plant_profile_id: Optional[UUID] = None,
+                       unassigned_only: bool = False) -> Tuple[List[Diagnosis], int]:
         stmt = select(DiagnosisModel).where(DiagnosisModel.user_id == user_id)
         if plant:
-            stmt = stmt.join(PlantModel, DiagnosisModel.plant_id == PlantModel.id).where(
-                PlantModel.canonical_name.ilike(f"%{plant}%")
+            stmt = stmt.outerjoin(PlantModel, DiagnosisModel.plant_id == PlantModel.id).where(
+                or_(PlantModel.canonical_name.ilike(_like(plant), escape="\\"),
+                    DiagnosisModel.predicted_label.ilike(_like(plant), escape="\\"))
             )
         if disease:
-            stmt = stmt.join(DiseaseModel, DiagnosisModel.disease_id == DiseaseModel.id).where(
-                DiseaseModel.name.ilike(f"%{disease}%")
+            stmt = stmt.outerjoin(DiseaseModel, DiagnosisModel.disease_id == DiseaseModel.id).where(
+                or_(DiseaseModel.name.ilike(_like(disease), escape="\\"),
+                    DiagnosisModel.predicted_label.ilike(_like(disease), escape="\\"))
             )
         if date_from:
-            stmt = stmt.where(DiagnosisModel.diagnosed_at >= date_from)
+            stmt = stmt.where(DiagnosisModel.diagnosed_at >= _start_of_day(date_from))
         if date_to:
-            stmt = stmt.where(DiagnosisModel.diagnosed_at <= date_to)
+            # inclusive of the whole `date_to` day
+            stmt = stmt.where(DiagnosisModel.diagnosed_at < _start_of_day(date_to + timedelta(days=1)))
+        if decision_status:
+            stmt = stmt.where(DiagnosisModel.decision_status == decision_status)
+        if plant_profile_id is not None:
+            stmt = stmt.where(DiagnosisModel.plant_profile_id == plant_profile_id)
+        elif unassigned_only:
+            stmt = stmt.where(DiagnosisModel.plant_profile_id.is_(None))
 
         total = self.db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
         stmt = stmt.order_by(DiagnosisModel.diagnosed_at.desc()).offset((page - 1) * page_size).limit(page_size)
         models = self.db.execute(stmt).scalars().all()
         return [_to_entity(m) for m in models], total
+
+    def list_for_plant_profile(self, plant_profile_id: UUID, date_from: Optional[date] = None,
+                               date_to: Optional[date] = None, decision_status: Optional[str] = None,
+                               page: int = 1, page_size: int = 50,
+                               ascending: bool = True) -> Tuple[List[Diagnosis], int]:
+        stmt = select(DiagnosisModel).where(DiagnosisModel.plant_profile_id == plant_profile_id)
+        if date_from:
+            stmt = stmt.where(DiagnosisModel.diagnosed_at >= _start_of_day(date_from))
+        if date_to:
+            stmt = stmt.where(DiagnosisModel.diagnosed_at < _start_of_day(date_to + timedelta(days=1)))
+        if decision_status:
+            stmt = stmt.where(DiagnosisModel.decision_status == decision_status)
+        total = self.db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
+        order = DiagnosisModel.diagnosed_at.asc() if ascending else DiagnosisModel.diagnosed_at.desc()
+        stmt = stmt.order_by(order).offset((page - 1) * page_size).limit(page_size)
+        models = self.db.execute(stmt).scalars().all()
+        return [_to_entity(m) for m in models], total
+
+    def set_plant_profile(self, diagnosis_id: UUID, plant_profile_id: Optional[UUID]) -> None:
+        model = self.db.get(DiagnosisModel, diagnosis_id)
+        if model is None:
+            return
+        model.plant_profile_id = plant_profile_id
+        self.db.commit()
+
+    def update_differential(self, diagnosis_id: UUID, differential: dict) -> None:
+        """Differential-diagnosis context (follow-up answers and the hints derived from
+        them) is the only part of an observation that changes after creation; the
+        answers themselves are also kept as append-only follow_up notes."""
+        model = self.db.get(DiagnosisModel, diagnosis_id)
+        if model is None:
+            return
+        model.differential_json = differential
+        self.db.commit()
 
     def dashboard_summary(self, user_id: Optional[UUID]) -> dict:
         base = select(DiagnosisModel)
@@ -184,11 +261,24 @@ class SqlAlchemyDiagnosisRepository(IDiagnosisRepository):
 
         total_scans = self.db.execute(select(func.count()).select_from(base.subquery())).scalar_one()
 
-        healthy_stmt = base.where(DiagnosisModel.disease_id.is_(None), DiagnosisModel.unrecognized_plant == False)  # noqa: E712
+        # "Healthy" means the model CONFIDENTLY predicted a healthy class. It no longer
+        # means "no disease record was found in the knowledge base" (which also
+        # happens for every disease the admins have not yet documented).
+        healthy_label = DiagnosisModel.predicted_label.like("%\\_\\_\\_healthy", escape="\\")
+        healthy_stmt = base.where(DiagnosisModel.decision_status == "confident", healthy_label)
         healthy_count = self.db.execute(select(func.count()).select_from(healthy_stmt.subquery())).scalar_one()
 
-        diseased_stmt = base.where(DiagnosisModel.disease_id.isnot(None))
+        diseased_stmt = base.where(or_(
+            DiagnosisModel.disease_id.isnot(None),
+            and_(DiagnosisModel.decision_status == "confident", ~healthy_label),
+        ))
         diseased_count = self.db.execute(select(func.count()).select_from(diseased_stmt.subquery())).scalar_one()
+
+        uncertain_stmt = base.where(DiagnosisModel.decision_status.in_(("uncertain", "inconclusive")))
+        uncertain_count = self.db.execute(select(func.count()).select_from(uncertain_stmt.subquery())).scalar_one()
+
+        confident_stmt = base.where(DiagnosisModel.decision_status == "confident")
+        confident_count = self.db.execute(select(func.count()).select_from(confident_stmt.subquery())).scalar_one()
 
         palm_stmt = (
             base.join(PlantModel, DiagnosisModel.plant_id == PlantModel.id)
@@ -202,14 +292,24 @@ class SqlAlchemyDiagnosisRepository(IDiagnosisRepository):
         )
         red_palm_weevil_incidents = self.db.execute(select(func.count()).select_from(weevil_stmt.subquery())).scalar_one()
 
-        common_diseases_stmt = (
-            base.join(DiseaseModel, DiagnosisModel.disease_id == DiseaseModel.id)
+        # Most common CONFIDENT predictions (by model label), plus legacy rows that were
+        # linked to a knowledge-base disease record.
+        label_rows = self.db.execute(
+            base.where(DiagnosisModel.decision_status == "confident", ~healthy_label,
+                       DiagnosisModel.predicted_label.isnot(None))
+            .with_only_columns(DiagnosisModel.predicted_label, func.count().label("cnt"))
+            .group_by(DiagnosisModel.predicted_label)
+        ).all()
+        legacy_rows = self.db.execute(
+            base.where(or_(DiagnosisModel.decision_status.is_(None), DiagnosisModel.decision_status == "legacy"))
+            .join(DiseaseModel, DiagnosisModel.disease_id == DiseaseModel.id)
             .with_only_columns(DiseaseModel.name, func.count().label("cnt"))
             .group_by(DiseaseModel.name)
-            .order_by(func.count().desc())
-            .limit(10)
-        )
-        most_common = [{"name": row[0], "count": row[1]} for row in self.db.execute(common_diseases_stmt).all()]
+        ).all()
+        counts: dict = {}
+        for name, cnt in list(label_rows) + list(legacy_rows):
+            counts[name] = counts.get(name, 0) + cnt
+        most_common = [{"name": n, "count": c} for n, c in sorted(counts.items(), key=lambda kv: -kv[1])[:10]]
 
         monthly_stmt = (
             base.with_only_columns(
@@ -227,6 +327,8 @@ class SqlAlchemyDiagnosisRepository(IDiagnosisRepository):
             "total_scans": total_scans,
             "healthy_count": healthy_count,
             "diseased_count": diseased_count,
+            "uncertain_count": uncertain_count,
+            "confident_count": confident_count,
             "palm_disease_stats": {
                 "total_palm_scans": total_palm_scans,
                 "red_palm_weevil_incidents": red_palm_weevil_incidents,

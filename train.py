@@ -21,7 +21,9 @@ This script performs, in order (FR-DATA-1..8):
      early stopping.
   7. Evaluation on the held-out test split (accuracy/precision/recall/F1, confusion
      matrix).
-  8. Persisting every required artifact (weights, label encoder, preprocessing
+  8. Persisting the exact split manifest (split_manifest.csv) and calibrating
+     confidence on the validation split (calibrate.py -> calibration.json).
+  9. Persisting every required artifact (weights, label encoder, preprocessing
      config, training history, metrics, confusion matrix image, training curve
      image, a copy of the exact unified dataset index used, and the resolved run
      configuration) to a timestamped `artifacts/runs/<timestamp>_<arch>/` directory,
@@ -34,6 +36,7 @@ import sys
 import time
 
 from ai.config import CONFIG
+from ai.evaluation.manifest import save_split_manifest
 from ai.logging_setup import configure_logging
 from ai.models.architectures import build_classifier, resolve_device
 from ai.pipeline.data_pipeline import prepare_data
@@ -65,6 +68,7 @@ def main() -> int:
     logger.info("AgriGuard AI — Training Pipeline starting.")
     logger.info("Datasets directory: %s", CONFIG.paths.datasets_dir)
     logger.info("Artifacts directory: %s", CONFIG.paths.artifacts_dir)
+    torch.manual_seed(CONFIG.data.random_seed)
 
     try:
         prepared = prepare_data()
@@ -111,11 +115,20 @@ def main() -> int:
     artifact_manager.save_metrics(metrics)
     artifact_manager.copy_dataset_index(CONFIG.paths.artifacts_dir / "unified_dataset_index.csv")
     artifact_manager.save_run_config()
+    save_split_manifest(prepared.splits, artifact_manager.run_dir)
     artifact_manager.mark_as_latest()
+
+    # Calibrate confidences and select decision thresholds on the VALIDATION split
+    # (never the test split). Failure here leaves a usable but uncalibrated model.
+    try:
+        from calibrate import calibrate_run
+        calibrate_run(artifact_manager.run_dir, logger)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Calibration step failed (%s); run `python calibrate.py` manually.", exc)
 
     elapsed = time.time() - start
     logger.info("Training complete in %.1fs. Artifacts saved to: %s", elapsed, artifact_manager.run_dir)
-    logger.info("Run `python evaluate.py` for a standalone evaluation report, or "
+    logger.info("Run `python evaluate.py` for the full held-out evaluation report, or "
                 "`python predict.py <image_path>` / `python inference.py` to use the model.")
     return 0
 

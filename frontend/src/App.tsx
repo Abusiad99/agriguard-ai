@@ -16,6 +16,10 @@ import DashboardPage from "@/pages/DashboardPage";
 import ScanPage from "@/pages/ScanPage";
 import DiagnosisResultPage from "@/pages/DiagnosisResultPage";
 import HistoryPage from "@/pages/HistoryPage";
+import PlantsPage from "@/pages/PlantsPage";
+import PlantDetailPage from "@/pages/PlantDetailPage";
+import ComparePage from "@/pages/ComparePage";
+import AssistantPage from "@/pages/AssistantPage";
 import ProfilePage from "@/pages/ProfilePage";
 import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import AdminUsersPage from "@/pages/admin/AdminUsersPage";
@@ -46,6 +50,10 @@ export default function App() {
                   <Route path="/scan" element={<ScanPage />} />
                   <Route path="/diagnoses/:id" element={<DiagnosisResultPage />} />
                   <Route path="/history" element={<HistoryPage />} />
+                  <Route path="/plants" element={<PlantsPage />} />
+                  <Route path="/plants/:id" element={<PlantDetailPage />} />
+                  <Route path="/plants/:id/compare" element={<ComparePage />} />
+                  <Route path="/assistant" element={<AssistantPage />} />
                   <Route path="/profile" element={<ProfilePage />} />
 
                   {/* Admin / agronomist routes */}

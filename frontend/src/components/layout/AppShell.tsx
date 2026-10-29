@@ -20,6 +20,10 @@ function activeKeyFor(pathname: string): string {
   return pathname.split("/")[1] ?? "";
 }
 
+/** The four destinations in the mobile tab bar, around the raised Scan button. */
+const MOBILE_LEFT = ["dashboard", "plants"];
+const MOBILE_RIGHT = ["history", "assistant"];
+
 export function AppShell() {
   const { user, logout, hasRole } = useAuth();
   const { t } = useLocale();
@@ -29,7 +33,9 @@ export function AppShell() {
   const navItems: NavItem[] = [
     { key: "dashboard", to: "/dashboard", label: t.nav.dashboard, icon: "dashboard" },
     { key: "scan", to: "/scan", label: t.nav.scan, icon: "camera" },
+    { key: "plants", to: "/plants", label: t.nav.plants, icon: "leaf" },
     { key: "history", to: "/history", label: t.nav.history, icon: "history" },
+    { key: "assistant", to: "/assistant", label: t.nav.assistant, icon: "chat" },
     { key: "profile", to: "/profile", label: t.nav.profile, icon: "profile" },
   ];
   if (hasRole("admin", "agronomist")) {
@@ -119,6 +125,9 @@ export function AppShell() {
           <div className="flex items-center">
             <ThemeToggle />
             <LocaleToggle />
+            <Link to="/profile" aria-label={t.nav.profile} className="ms-1 rounded-xl p-0.5">
+              <Avatar name={user?.full_name} size="sm" />
+            </Link>
           </div>
         </div>
       </header>
@@ -138,8 +147,7 @@ export function AppShell() {
         style={{ marginBottom: "env(safe-area-inset-bottom)" }}
       >
         {navItems
-          .filter((i) => i.key !== "scan")
-          .slice(0, 2)
+          .filter((i) => MOBILE_LEFT.includes(i.key))
           .map((item) => (
             <MobileTab key={item.key} item={item} isActive={activeKey === item.key} />
           ))}
@@ -156,8 +164,7 @@ export function AppShell() {
           <span className={`whitespace-nowrap text-[10.5px] font-semibold ${activeKey === "scan" ? "text-primary" : "text-muted"}`}>{t.nav.scan}</span>
         </Link>
         {navItems
-          .filter((i) => i.key !== "scan")
-          .slice(2)
+          .filter((i) => MOBILE_RIGHT.includes(i.key))
           .map((item) => (
             <MobileTab key={item.key} item={item} isActive={activeKey === item.key} />
           ))}
@@ -185,14 +192,14 @@ function MobileTab({ item, isActive }: { item: NavItem; isActive: boolean }) {
   );
 }
 
-export function Avatar({ name, size = "md" }: { name?: string | null; size?: "md" | "lg" }) {
+export function Avatar({ name, size = "md" }: { name?: string | null; size?: "sm" | "md" | "lg" }) {
   const initials = (name ?? "?")
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((p) => p.charAt(0).toUpperCase())
     .join("");
-  const dims = size === "lg" ? "h-16 w-16 text-xl rounded-[1.25rem]" : "h-10 w-10 text-sm rounded-xl";
+  const dims = size === "lg" ? "h-16 w-16 text-xl rounded-[1.25rem]" : size === "sm" ? "h-9 w-9 text-xs rounded-xl" : "h-10 w-10 text-sm rounded-xl";
   return (
     <span className={`inline-flex shrink-0 items-center justify-center bg-brand font-display font-semibold text-white shadow-glow ${dims}`}>
       {initials}

@@ -5,6 +5,8 @@ import { scansApi } from "@/lib/endpoints/scans";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import type { DecisionStatus } from "@/types/api";
 import { ButtonLink } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/Card";
 import { Pagination } from "@/components/ui/Pagination";
@@ -18,6 +20,7 @@ export default function HistoryPage() {
   const [disease, setDisease] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [status, setStatus] = useState<DecisionStatus | "">("");
   const [page, setPage] = useState(1);
   // Typing in the text filters waits for a short pause before querying.
   const plantQuery = useDebounced(plant);
@@ -30,10 +33,11 @@ export default function HistoryPage() {
         disease: diseaseQuery || undefined,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        decision_status: status || undefined,
         page,
         page_size: PAGE_SIZE,
       }),
-    [plantQuery, diseaseQuery, dateFrom, dateTo, page]
+    [plantQuery, diseaseQuery, dateFrom, dateTo, status, page]
   );
 
   return (
@@ -48,11 +52,18 @@ export default function HistoryPage() {
         }
       />
 
-      <div className="glass grid grid-cols-2 gap-3 rounded-panel p-3 sm:p-4 lg:grid-cols-4">
+      <div className="glass grid grid-cols-2 gap-3 rounded-panel p-3 sm:p-4 lg:grid-cols-5">
         <Input icon="leaf" placeholder={t.history.searchPlant} aria-label={t.history.searchPlant} value={plant} onChange={(e) => { setPlant(e.target.value); setPage(1); }} />
         <Input icon="bug" placeholder={t.history.searchDisease} aria-label={t.history.searchDisease} value={disease} onChange={(e) => { setDisease(e.target.value); setPage(1); }} />
         <DateField label={t.history.dateFrom} value={dateFrom} onChange={(v) => { setDateFrom(v); setPage(1); }} />
         <DateField label={t.history.dateTo} value={dateTo} onChange={(v) => { setDateTo(v); setPage(1); }} />
+        <Select aria-label={t.history.statusFilter} value={status} onChange={(e) => { setStatus(e.target.value as DecisionStatus | ""); setPage(1); }}>
+          <option value="">{t.history.allStatuses}</option>
+          <option value="confident">{t.status.confident}</option>
+          <option value="uncertain">{t.status.uncertain}</option>
+          <option value="inconclusive">{t.status.inconclusive}</option>
+          <option value="legacy">{t.status.legacy}</option>
+        </Select>
       </div>
 
       <div>

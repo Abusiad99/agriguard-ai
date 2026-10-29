@@ -14,14 +14,11 @@ import io
 
 from PIL import Image
 
-from tests.conftest import make_auth_header
+from tests.conftest import make_auth_header, make_leaf_like_image_bytes
 
 
 def _image_file():
-    buf = io.BytesIO()
-    Image.new("RGB", (64, 64), color=(70, 120, 50)).save(buf, format="JPEG")
-    buf.seek(0)
-    return ("leaf.jpg", buf, "image/jpeg")
+    return ("leaf.jpg", io.BytesIO(make_leaf_like_image_bytes()), "image/jpeg")
 
 
 class TestCreateScan:

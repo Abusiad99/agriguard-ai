@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 # Load .env if python-dotenv is available; never fail if it isn't.
 try:
@@ -104,14 +104,51 @@ class TrainConfig:
     mixed_precision: bool = _env_bool("AGRIGUARD_MIXED_PRECISION", True)
     freeze_backbone_epochs: int = _env_int("AGRIGUARD_FREEZE_BACKBONE_EPOCHS", 2)
     device: str = _env_str("AGRIGUARD_DEVICE", "auto")  # auto|cpu|cuda|mps
+    # Optional local ImageNet checkpoint for the backbone (e.g. a timm release .pth
+    # downloaded from GitHub). Used instead of timm's Hugging Face download when set,
+    # which matters on hosts that cannot reach huggingface.co. Empty = timm default.
+    pretrained_weights_path: str = _env_str("AGRIGUARD_PRETRAINED_WEIGHTS", "")
+
+
+def _env_optional_float(key: str):
+    val = os.environ.get(key)
+    if val is None or val.strip() == "":
+        return None
+    return float(val)
 
 
 @dataclass
 class InferenceConfig:
-    """Runtime inference thresholds. FR-AI-12, BR1."""
+    """Runtime inference thresholds. FR-AI-12, BR1.
 
+    Threshold precedence at inference time (see ai/inference/decision.py):
+      1. An explicit environment override below (operator decision, reported as
+         threshold_source="env_override").
+      2. Thresholds selected on the VALIDATION split and saved in the model run's
+         calibration.json by `python calibrate.py` (threshold_source="validation").
+      3. The legacy defaults below, which were never validated against data and are
+         reported as threshold_source="unvalidated_default" so the UI/API can say so.
+    """
+
+    # Legacy, unvalidated defaults (fallback only).
     plant_id_confidence_threshold: float = _env_float("AGRIGUARD_PLANT_CONF_THRESHOLD", 0.55)
     disease_low_confidence_threshold: float = _env_float("AGRIGUARD_DISEASE_LOW_CONF_THRESHOLD", 0.60)
+    reject_confidence_default: float = 0.30
+
+    # Explicit operator overrides (take precedence over calibration.json when set).
+    confident_threshold_override: Optional[float] = field(
+        default_factory=lambda: _env_optional_float("AGRIGUARD_CONFIDENT_THRESHOLD"))
+    reject_threshold_override: Optional[float] = field(
+        default_factory=lambda: _env_optional_float("AGRIGUARD_REJECT_THRESHOLD"))
+
+    # Targets used when *selecting* thresholds on the validation split (calibrate.py).
+    target_selective_accuracy: float = _env_float("AGRIGUARD_TARGET_SELECTIVE_ACCURACY", 0.90)
+    target_candidate_topk_accuracy: float = _env_float("AGRIGUARD_TARGET_CANDIDATE_TOPK_ACCURACY", 0.75)
+    candidate_top_k: int = _env_int("AGRIGUARD_CANDIDATE_TOP_K", 3)
+
+    # Severity category cut-offs. Kept for backward compatibility ONLY: affected-area
+    # percentages are no longer mapped to mild/moderate/severe unless a crop-specific,
+    # documented scale is configured (ai/segmentation/severity_scales.json).
     severity_mild_max_pct: float = _env_float("AGRIGUARD_SEVERITY_MILD_MAX", 15.0)
     severity_moderate_max_pct: float = _env_float("AGRIGUARD_SEVERITY_MODERATE_MAX", 40.0)
 

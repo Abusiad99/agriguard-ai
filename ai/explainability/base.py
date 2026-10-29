@@ -13,7 +13,14 @@ import numpy as np
 import torch
 
 
+class ExplanationUnavailableError(RuntimeError):
+    """Raised when an explainer cannot produce a genuine explanation for this model
+    (as opposed to returning a placeholder map that would look like one)."""
+
+
 class Explainer(abc.ABC):
+    method_name: str = "unknown"
+
     @abc.abstractmethod
     def explain(self, model: torch.nn.Module, input_tensor: torch.Tensor, target_class: int) -> np.ndarray:
         """Return a 2D numpy array (H x W, values in [0, 1]) heatmap for the given

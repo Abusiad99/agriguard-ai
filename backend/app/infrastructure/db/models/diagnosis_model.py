@@ -32,6 +32,24 @@ class DiagnosisModel(Base):
     supersedes_diagnosis_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("diagnoses.id"), nullable=True)
     diagnosed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
+    # --- Observation provenance (migration 0003). All nullable: rows created before
+    # 0003 carry decision_status='legacy' and no provenance. ---
+    plant_profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("plant_profiles.id", ondelete="SET NULL"), nullable=True, index=True)
+    decision_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    predicted_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    candidates_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    decision_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    image_quality_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    explanation_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    segmentation_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    segmentation_mask_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    segmentation_overlay_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    severity_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    model_version: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    pipeline_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    differential_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     user = relationship("UserModel", back_populates="diagnoses")
     plant = relationship("PlantModel")
     disease = relationship("DiseaseModel")
@@ -40,6 +58,9 @@ class DiagnosisModel(Base):
     recommendation = relationship("RecommendationModel", back_populates="diagnosis", uselist=False, cascade="all, delete-orphan")
     report = relationship("ReportModel", back_populates="diagnosis", uselist=False, cascade="all, delete-orphan")
     ai_analysis = relationship("AiAnalysisModel", back_populates="diagnosis", uselist=False, cascade="all, delete-orphan")
+    plant_profile = relationship("PlantProfileModel", back_populates="observations")
+    notes = relationship("ObservationNoteModel", back_populates="diagnosis", cascade="all, delete-orphan",
+                         order_by="ObservationNoteModel.created_at")
 
 
 class PestDetectionModel(Base):

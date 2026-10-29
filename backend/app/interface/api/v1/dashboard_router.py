@@ -21,6 +21,8 @@ def _to_schema(summary: dict) -> DashboardResponse:
         total_scans=summary["total_scans"],
         healthy_count=summary["healthy_count"],
         diseased_count=summary["diseased_count"],
+        uncertain_count=summary.get("uncertain_count", 0),
+        confident_count=summary.get("confident_count", 0),
         palm_disease_stats=PalmDiseaseStats(**summary["palm_disease_stats"]),
         most_common_diseases=[CommonDiseaseCount(**d) for d in summary["most_common_diseases"]],
         monthly_trend=[MonthlyTrendPoint(**m) for m in summary["monthly_trend"]],

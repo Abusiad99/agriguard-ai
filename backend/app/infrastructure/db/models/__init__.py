@@ -5,6 +5,7 @@ by the test suite's `Base.metadata.create_all()` against SQLite.
 """
 from app.infrastructure.db.base import Base  # noqa: F401
 from app.infrastructure.db.models.diagnosis_model import (  # noqa: F401
+    AiAnalysisModel,
     AuditLogModel,
     DiagnosisModel,
     PestDetectionModel,
@@ -16,6 +17,15 @@ from app.infrastructure.db.models.knowledge_base_model import (  # noqa: F401
     DiseaseModel,
     PlantModel,
     TreatmentModel,
+)
+from app.infrastructure.db.models.knowledge_document_model import (  # noqa: F401
+    AssistantUsageModel,
+    KbChunkModel,
+    KbDocumentModel,
+)
+from app.infrastructure.db.models.tracking_model import (  # noqa: F401
+    ObservationNoteModel,
+    PlantProfileModel,
 )
 from app.infrastructure.db.models.user_model import (  # noqa: F401
     PasswordResetTokenModel,
@@ -37,4 +47,10 @@ __all__ = [
     "RecommendationModel",
     "ReportModel",
     "AuditLogModel",
+    "AiAnalysisModel",
+    "PlantProfileModel",
+    "ObservationNoteModel",
+    "KbDocumentModel",
+    "KbChunkModel",
+    "AssistantUsageModel",
 ]

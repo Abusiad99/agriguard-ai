@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import imagehash
+import numpy as np
 from PIL import Image
 
 from ai.config import CONFIG
@@ -43,10 +44,16 @@ class DuplicateDetector:
 
     def deduplicate(self, image_paths: List[Path]) -> Tuple[List[Path], Dict[Path, Path]]:
         """Return (kept_paths, duplicate_map) where duplicate_map maps a dropped path
-        to the path it was considered a duplicate of."""
+        to the path it was considered a duplicate of.
+
+        Near-duplicate search compares each new 64-bit average hash against all kept
+        hashes with a vectorized XOR + popcount (same semantics as comparing
+        `imagehash.ImageHash` objects pairwise, but fast enough for ~10^4 images)."""
         seen_exact: Dict[str, Path] = {}
-        seen_phash: Dict[imagehash.ImageHash, Path] = {}
         kept: List[Path] = []
+        kept_hash_paths: List[Path] = []
+        hash_array = np.zeros(max(16, len(image_paths)), dtype=np.uint64)
+        n_hashes = 0
         duplicate_map: Dict[Path, Path] = {}
 
         for path in image_paths:
@@ -62,6 +69,8 @@ class DuplicateDetector:
             try:
                 with Image.open(path) as img:
                     phash = imagehash.average_hash(img.convert("L"))
+                bits = np.packbits(np.asarray(phash.hash, dtype=np.uint8).flatten())
+                hash_int = int.from_bytes(bits.tobytes(), "big")
             except Exception:
                 # If perceptual hashing fails for any reason, fall back to keeping the
                 # image (exact-hash dedup already ran) rather than dropping valid data.
@@ -70,17 +79,20 @@ class DuplicateDetector:
                 continue
 
             duplicate_of = None
-            for existing_hash, existing_path in seen_phash.items():
-                if phash - existing_hash <= self.hamming_threshold:
-                    duplicate_of = existing_path
-                    break
+            if n_hashes:
+                distances = _popcount64(np.bitwise_xor(hash_array[:n_hashes], np.uint64(hash_int)))
+                hit = np.flatnonzero(distances <= self.hamming_threshold)
+                if hit.size:
+                    duplicate_of = kept_hash_paths[int(hit[0])]
 
             if duplicate_of is not None:
                 duplicate_map[path] = duplicate_of
                 continue
 
             seen_exact[exact_hash] = path
-            seen_phash[phash] = path
+            hash_array[n_hashes] = np.uint64(hash_int)
+            n_hashes += 1
+            kept_hash_paths.append(path)
             kept.append(path)
 
         logger.info(
@@ -88,3 +100,9 @@ class DuplicateDetector:
             len(kept), len(image_paths), len(duplicate_map),
         )
         return kept, duplicate_map
+
+
+def _popcount64(values: np.ndarray) -> np.ndarray:
+    """Vectorized popcount for uint64 arrays."""
+    v = values.view(np.uint8).reshape(-1, 8)
+    return np.unpackbits(v, axis=1).sum(axis=1)

@@ -16,10 +16,12 @@ from typing import List
 import numpy as np
 import torch
 
-from ai.explainability.base import Explainer
+from ai.explainability.base import Explainer, ExplanationUnavailableError
 
 
 class AttentionRolloutExplainer(Explainer):
+    method_name = "attention_rollout"
+
     def __init__(self, discard_ratio: float = 0.9):
         self.discard_ratio = discard_ratio
         self._attentions: List[torch.Tensor] = []
@@ -51,15 +53,13 @@ class AttentionRolloutExplainer(Explainer):
         img_size = input_tensor.shape[-1]
 
         if not self._attentions:
-            # Fallback: many timm ViT builds don't expose attention weights through
-            # standard hooks without `attn_drop`/`fused_attn` reconfiguration. In
-            # that case, fall back to a uniform center-weighted prior rather than
-            # fabricating a misleading heatmap — this is intentionally conservative.
-            grid = np.indices((img_size, img_size))
-            center = img_size / 2
-            dist = np.sqrt((grid[0] - center) ** 2 + (grid[1] - center) ** 2)
-            heatmap = 1 - (dist / dist.max())
-            return heatmap.astype(np.float32)
+            # Many timm ViT builds use fused attention and never expose attention
+            # weights to forward hooks. An earlier version returned a synthetic
+            # centre-weighted "heatmap" here, which looked like an explanation but
+            # contained no information from the model. Report unavailability instead.
+            raise ExplanationUnavailableError(
+                "Attention weights are not exposed by this ViT build; no explanation available."
+            )
 
         result = torch.eye(self._attentions[0].size(-1))
         for attn in self._attentions:

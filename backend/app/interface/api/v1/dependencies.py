@@ -12,6 +12,7 @@ from uuid import UUID
 from fastapi import Depends, Header
 from sqlalchemy.orm import Session
 
+from app.application.services.assistant_service import AssistantService
 from app.application.services.auth_service import AuthService
 from app.application.services.dashboard_admin_service import AdminService, DashboardService
 from app.application.services.gemini_analysis_service import GeminiAnalysisService
@@ -27,12 +28,17 @@ from app.infrastructure.external.weather_client import WeatherService
 from app.infrastructure.reporting.pdf_report_generator import PdfReportGenerator
 from app.infrastructure.repositories.audit_log_repository import SqlAlchemyAuditLogRepository
 from app.infrastructure.repositories.diagnosis_repository import SqlAlchemyDiagnosisRepository
+from app.infrastructure.repositories.knowledge_document_repository import SqlAlchemyKnowledgeDocumentRepository
 from app.infrastructure.repositories.knowledge_base_repository import (
     SqlAlchemyDiseaseRepository,
     SqlAlchemyPlantRepository,
     SqlAlchemyTreatmentRepository,
 )
 from app.infrastructure.repositories.refresh_token_repository import SqlAlchemyRefreshTokenRepository
+from app.infrastructure.repositories.tracking_repository import (
+    SqlAlchemyObservationNoteRepository,
+    SqlAlchemyPlantProfileRepository,
+)
 from app.infrastructure.repositories.user_repository import SqlAlchemyUserRepository
 from app.infrastructure.security.jwt_service import JwtService, TokenError
 from app.infrastructure.security.password_hasher import PasswordHasher
@@ -46,7 +52,8 @@ _password_hasher = PasswordHasher()
 _weather_service = WeatherService()
 _pdf_generator = PdfReportGenerator()
 _ai_client = AiPipelineClient()
-_gemini_service = GeminiAnalysisService(GeminiClient())
+_gemini_client = GeminiClient()
+_gemini_service = GeminiAnalysisService(_gemini_client)
 _storage = LocalObjectStorage(base_dir=settings.local_storage_dir)
 
 
@@ -79,6 +86,32 @@ def get_audit_log_repository(db: Session = Depends(get_db)) -> SqlAlchemyAuditLo
     return SqlAlchemyAuditLogRepository(db)
 
 
+def get_plant_profile_repository(db: Session = Depends(get_db)) -> SqlAlchemyPlantProfileRepository:
+    return SqlAlchemyPlantProfileRepository(db)
+
+
+def get_note_repository(db: Session = Depends(get_db)) -> SqlAlchemyObservationNoteRepository:
+    return SqlAlchemyObservationNoteRepository(db)
+
+
+def get_ai_client() -> AiPipelineClient:
+    return _ai_client
+
+
+def get_knowledge_document_repository(db: Session = Depends(get_db)) -> SqlAlchemyKnowledgeDocumentRepository:
+    return SqlAlchemyKnowledgeDocumentRepository(db)
+
+
+def get_assistant_service(
+    kb_repo: SqlAlchemyKnowledgeDocumentRepository = Depends(get_knowledge_document_repository),
+    diagnosis_repo: SqlAlchemyDiagnosisRepository = Depends(get_diagnosis_repository),
+    profile_repo: SqlAlchemyPlantProfileRepository = Depends(get_plant_profile_repository),
+    note_repo: SqlAlchemyObservationNoteRepository = Depends(get_note_repository),
+) -> AssistantService:
+    return AssistantService(kb_repo, _gemini_client, diagnosis_repo=diagnosis_repo, profile_repo=profile_repo,
+                            note_repo=note_repo)
+
+
 # --- Application service providers ---
 def get_auth_service(
     user_repo: SqlAlchemyUserRepository = Depends(get_user_repository),
@@ -92,11 +125,14 @@ def get_scan_orchestrator(
     disease_repo: SqlAlchemyDiseaseRepository = Depends(get_disease_repository),
     treatment_repo: SqlAlchemyTreatmentRepository = Depends(get_treatment_repository),
     diagnosis_repo: SqlAlchemyDiagnosisRepository = Depends(get_diagnosis_repository),
+    profile_repo: SqlAlchemyPlantProfileRepository = Depends(get_plant_profile_repository),
+    note_repo: SqlAlchemyObservationNoteRepository = Depends(get_note_repository),
 ) -> ScanOrchestrator:
     return ScanOrchestrator(
         storage=_storage, ai_client=_ai_client, plant_repo=plant_repo, disease_repo=disease_repo,
         treatment_repo=treatment_repo, diagnosis_repo=diagnosis_repo, weather_service=_weather_service,
         pdf_generator=_pdf_generator, gemini_service=_gemini_service,
+        plant_profile_repo=profile_repo, note_repo=note_repo,
     )
 
 

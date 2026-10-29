@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { DashboardResponse } from "@/types/api";
 import { useLocale } from "@/context/LocaleContext";
+import { labelDisplay } from "@/utils/labels";
 import { Card, CardHeader, CardTitle, IconTile, type TileTone } from "@/components/ui/Card";
 import { CountUp } from "@/components/ui/CountUp";
 import { Icon, type IconName } from "@/components/ui/Icon";
@@ -19,13 +20,14 @@ export function DashboardOverview({ data }: { data: DashboardResponse }) {
         <div className="col-span-2 sm:col-span-1">
           <StatTile icon="scan" tone="primary" label={t.dashboard.totalScans} value={data.total_scans} trend={data.monthly_trend.map((m) => m.scan_count)} />
         </div>
-        <StatTile icon="leaf" tone="primary" label={t.dashboard.healthy} value={data.healthy_count} share={total ? data.healthy_count / total : 0} />
         <StatTile icon="bug" tone="severe" label={t.dashboard.diseased} value={data.diseased_count} share={total ? data.diseased_count / total : 0} />
+        <StatTile icon="question" tone="moderate" label={t.dashboard.uncertain} value={data.uncertain_count ?? 0} share={total ? (data.uncertain_count ?? 0) / total : 0} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-12">
         <div className="lg:col-span-5">
-          <HealthCard healthy={data.healthy_count} diseased={data.diseased_count} total={total} />
+          <HealthCard confident={data.confident_count ?? 0} healthy={data.healthy_count} diseased={data.diseased_count}
+            uncertain={data.uncertain_count ?? 0} total={total} />
         </div>
         <div className="lg:col-span-7">
           <TrendCard trend={data.monthly_trend} />
@@ -33,12 +35,14 @@ export function DashboardOverview({ data }: { data: DashboardResponse }) {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-12">
-        <div className="lg:col-span-7">
+        <div className={data.palm_disease_stats.total_palm_scans > 0 ? "lg:col-span-7" : "lg:col-span-12"}>
           <DiseaseRankingCard diseases={data.most_common_diseases} />
         </div>
-        <div className="lg:col-span-5">
-          <PalmPanel palmScans={data.palm_disease_stats.total_palm_scans} weevil={data.palm_disease_stats.red_palm_weevil_incidents} />
-        </div>
+        {data.palm_disease_stats.total_palm_scans > 0 && (
+          <div className="lg:col-span-5">
+            <PalmPanel palmScans={data.palm_disease_stats.total_palm_scans} weevil={data.palm_disease_stats.red_palm_weevil_incidents} />
+          </div>
+        )}
       </div>
     </>
   );
@@ -123,10 +127,14 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
-function HealthCard({ healthy, diseased, total }: { healthy: number; diseased: number; total: number }) {
+/** Share of scans whose model result was confident. (The current model has no
+ * healthy class, so a "healthy rate" would always read 0% and mislead.) */
+function HealthCard({ confident, healthy, diseased, uncertain, total }: {
+  confident: number; healthy: number; diseased: number; uncertain: number; total: number;
+}) {
   const { t } = useLocale();
-  const rate = total ? (healthy / total) * 100 : 0;
-  const body = t.dashboard.healthRateBody.replace("{healthy}", String(healthy)).replace("{total}", String(total));
+  const rate = total ? (confident / total) * 100 : 0;
+  const body = t.dashboard.healthRateBody.replace("{healthy}", String(confident)).replace("{total}", String(total));
   return (
     <Card className="flex h-full flex-col">
       <CardHeader>
@@ -137,8 +145,9 @@ function HealthCard({ healthy, diseased, total }: { healthy: number; diseased: n
         <div className="w-full flex-1">
           <p className="text-sm leading-relaxed text-muted">{body}</p>
           <dl className="mt-5 flex flex-col gap-3">
-            <LegendRow color="bg-primary" label={t.dashboard.healthy} value={healthy} />
+            {healthy > 0 && <LegendRow color="bg-primary" label={t.dashboard.healthy} value={healthy} />}
             <LegendRow color="bg-severity-severe" label={t.dashboard.diseased} value={diseased} />
+            <LegendRow color="bg-severity-moderate" label={t.dashboard.uncertain} value={uncertain} />
           </dl>
         </div>
       </div>
@@ -259,7 +268,7 @@ function DiseaseRankingCard({ diseases }: { diseases: DashboardResponse["most_co
               >
                 {i + 1}
               </span>
-              <span className="truncate text-sm font-medium text-ink">{d.name}</span>
+              <span dir="auto" className="truncate text-sm font-medium text-ink">{d.name.includes("___") ? labelDisplay(d.name, t) : d.name}</span>
               <span className="font-data text-sm font-semibold tabular-nums text-ink">{d.count}</span>
               <div className="col-span-2 h-2 overflow-hidden rounded-full bg-ink/[0.06]">
                 <div

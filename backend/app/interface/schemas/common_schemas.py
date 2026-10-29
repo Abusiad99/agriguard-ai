@@ -38,9 +38,11 @@ class MonthlyTrendPoint(BaseModel):
 
 class DashboardResponse(BaseModel):
     total_scans: int
-    healthy_count: int
+    healthy_count: int  # confident healthy-class predictions only
     diseased_count: int
     palm_disease_stats: PalmDiseaseStats
+    uncertain_count: int = 0  # uncertain + inconclusive observations
+    confident_count: int = 0  # observations whose decision status is "confident"
     most_common_diseases: List[CommonDiseaseCount]
     monthly_trend: List[MonthlyTrendPoint]
 

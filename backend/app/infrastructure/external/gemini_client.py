@@ -83,7 +83,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import get_settings
 from app.domain.repositories.interfaces import IDiseaseRepository, IPlantRepository, ITreatmentRepository
@@ -299,6 +299,34 @@ _STRUCTURE_PROMPT_TEMPLATE = (
 )
 
 
+# ===========================================================================
+# Agricultural assistant (retrieval-augmented) — reuses the same SDK client,
+# API key, model and timeout settings as the scan analysis above. Like analyze(),
+# these methods never raise to the caller: failures return None and the assistant
+# degrades to retrieval-only mode.
+# ===========================================================================
+class AssistantAnswerSchema(BaseModel):
+    answer: str = Field(description="The answer, in the requested language, with [S#] citation markers.")
+    citations: List[str] = Field(default_factory=list, description="Source ids actually used, e.g. ['S1','S3'].")
+    evidence_sufficient: bool = Field(description="False when the sources do not support a confident answer.")
+    recommends_expert: bool = Field(default=False, description="True when a local expert should be consulted.")
+
+
+def _assistant_client_or_none(client):
+    if not settings.gemini_enabled:
+        return None, None
+    try:
+        from google.genai import types  # noqa: F401
+    except ImportError:
+        logger.warning("google-genai is not installed; assistant LLM features are unavailable.")
+        return None, None
+    try:
+        return client._get_sdk_client(), types
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gemini client could not be created: %s", type(exc).__name__)
+        return None, None
+
+
 class GeminiClient:
     """Thin, isolated wrapper around the `google-genai` SDK. Constructed lazily
     and cached (mirrors AiPipelineClient's lazy-singleton pattern) so importing
@@ -402,3 +430,72 @@ class GeminiClient:
             return GeminiAnalysisResult(status="unavailable", message="AI analysis temporarily unavailable.")
         finally:
             _tools_ctx.reset(token)
+
+    # --- Agricultural assistant (RAG) ---------------------------------------
+    def generate_grounded_answer(self, system_instruction: str, prompt: str) -> Optional[AssistantAnswerSchema]:
+        sdk, types = _assistant_client_or_none(self)
+        if sdk is None:
+            return None
+        try:
+            response = sdk.models.generate_content(
+                model=settings.gemini_model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    response_mime_type="application/json",
+                    response_schema=AssistantAnswerSchema,
+                    temperature=0.2,
+                    max_output_tokens=settings.assistant_max_output_tokens,
+                    http_options=types.HttpOptions(timeout=int(settings.gemini_timeout_seconds * 1000)),
+                ),
+            )
+            raw = (response.text or "").strip()
+            if not raw:
+                return None
+            return AssistantAnswerSchema.model_validate(json.loads(raw))
+        except (json.JSONDecodeError, ValidationError) as exc:
+            logger.warning("Assistant answer failed validation: %s", type(exc).__name__)
+            return None
+        except Exception as exc:  # noqa: BLE001 - network/SDK/rate-limit errors all degrade the same way
+            logger.warning("Assistant generation failed (%s).", type(exc).__name__)
+            return None
+
+    def embed_texts(self, texts: List[str], task_type: str = "RETRIEVAL_QUERY") -> Optional[List[List[float]]]:
+        sdk, types = _assistant_client_or_none(self)
+        if sdk is None or not texts:
+            return None
+        try:
+            result = sdk.models.embed_content(
+                model=settings.gemini_embedding_model,
+                contents=texts,
+                config=types.EmbedContentConfig(task_type=task_type,
+                                                output_dimensionality=settings.gemini_embedding_dimensions),
+            )
+            vectors = [list(e.values) for e in (result.embeddings or [])]
+            return vectors if len(vectors) == len(texts) else None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Embedding request failed (%s); falling back to lexical retrieval.", type(exc).__name__)
+            return None
+
+    def rewrite_query(self, question: str) -> Optional[str]:
+        """Translate a (typically Arabic) question into short English search keywords so
+        it can match English-language sources. Returns None on any failure."""
+        sdk, types = _assistant_client_or_none(self)
+        if sdk is None:
+            return None
+        try:
+            response = sdk.models.generate_content(
+                model=settings.gemini_model,
+                contents=("Rewrite the following farmer question as at most 12 English search keywords about "
+                          "crops, plant diseases, symptoms or management. Output only the keywords.\n\n"
+                          f"Question: {question[:1000]}"),
+                config=types.GenerateContentConfig(
+                    temperature=0.0, max_output_tokens=60,
+                    http_options=types.HttpOptions(timeout=int(min(settings.gemini_timeout_seconds, 8) * 1000)),
+                ),
+            )
+            text = (response.text or "").strip()
+            return text[:200] if text else None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Query rewrite failed (%s).", type(exc).__name__)
+            return None

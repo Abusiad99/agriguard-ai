@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # --- File upload (FR-SCAN-1) ---
     max_upload_size_bytes: int = 15 * 1024 * 1024  # 15MB
     allowed_image_content_types: List[str] = ["image/jpeg", "image/png", "image/webp"]
+    max_image_pixels: int = 50_000_000  # decompression-bomb guard (~50 MP)
+
+    # --- Media access (signed, expiring URLs for private images/reports) ---
+    media_url_ttl_seconds: int = 3600
 
     # --- Storage ---
     storage_backend: str = Field(default="local")  # local | s3
@@ -78,6 +82,17 @@ class Settings(BaseSettings):
     gemini_model: str = Field(default="gemini-2.5-flash")
     gemini_timeout_seconds: float = 20.0
     gemini_max_tool_calls: int = 6  # cap on automatic function-calling round-trips per analysis
+
+    gemini_embedding_model: str = Field(default="gemini-embedding-001")
+    gemini_embedding_dimensions: int = 768
+
+    # --- Agricultural assistant (RAG) limits / cost controls ---
+    assistant_max_question_chars: int = 2000
+    assistant_max_history_turns: int = 6
+    assistant_max_output_tokens: int = 900
+    assistant_top_k_chunks: int = 6
+    assistant_llm_calls_per_user_per_day: int = 50
+    rate_limit_assistant_per_5min: int = 20
 
     @property
     def gemini_enabled(self) -> bool:

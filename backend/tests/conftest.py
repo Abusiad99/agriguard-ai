@@ -59,34 +59,83 @@ def db_session(db_engine):
         session.close()
 
 
+def make_leaf_like_image_bytes(size: int = 320, seed: int = 0, fmt: str = "JPEG") -> bytes:
+    """A textured, green, well-exposed synthetic photo that passes the image-quality
+    gate. (Flat single-colour squares are — correctly — rejected as having no detail.)"""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    base = np.zeros((size, size, 3), dtype=np.float64)
+    base[..., 0], base[..., 1], base[..., 2] = 70, 140, 55
+    yy, xx = np.mgrid[0:size, 0:size]
+    veins = 25 * np.sin(xx / 7.0) * np.cos(yy / 11.0)
+    noise = rng.normal(0, 18, size=(size, size, 1))
+    arr = np.clip(base + veins[..., None] + noise, 0, 255).astype("uint8")
+    buf = io.BytesIO()
+    Image.fromarray(arr).save(buf, format=fmt)
+    return buf.getvalue()
+
+
+def fake_diagnosis_result(decision_status: str = "confident", **overrides):
+    """Shape-compatible stand-in for ai.inference.inference_service.DiagnosisOutput."""
+    from types import SimpleNamespace
+
+    confident = decision_status == "confident"
+    inconclusive = decision_status == "inconclusive"
+    top_k = [
+        {"plant": "tomato", "condition": "early_blight", "canonical": "tomato___early_blight", "confidence": 91.5},
+        {"plant": "tomato", "condition": "septoria_leaf_spot", "canonical": "tomato___septoria_leaf_spot",
+         "confidence": 4.2},
+        {"plant": "potato", "condition": "early_blight", "canonical": "potato___early_blight", "confidence": 2.1},
+    ]
+    values = dict(
+        status="completed", unrecognized_plant=False,
+        plant=None if inconclusive else "tomato",
+        condition=None if inconclusive else "early_blight",
+        canonical_label=None if inconclusive else "tomato___early_blight",
+        confidence_score=91.5 if confident else (48.0 if decision_status == "uncertain" else 12.0),
+        low_confidence_flag=not confident, decision_status=decision_status,
+        decision={"status": decision_status, "top1_probability": 0.915 if confident else 0.48, "margin": 0.87,
+                  "normalized_entropy": 0.1, "plant_identified": not inconclusive},
+        thresholds={"confident": 0.8, "reject": 0.3, "plant_mass": 0.6, "source": "validation",
+                    "temperature": 1.4, "calibrated": True},
+        plant_probability_mass=0.95, raw_top1_probability=0.97,
+        severity_level=None, affected_area_pct=None, healthy_area_pct=None, severity_method=None,
+        segmentation={"status": "unavailable", "reason": "no_segmentation_model"},
+        top_k=top_k, heatmap_overlay_path=None,
+        explanation={"method": "grad_cam", "available": True, "target_label": "tomato___early_blight",
+                     "reason": None},
+        quality={"status": "ok", "issues": [], "metrics": {}, "version": "1.0.0"},
+        model_version="test-run:abc123", pipeline_version="2.0.0", inference_ms=12.0,
+    )
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
 class _FakeInferenceService:
     """Deterministic stand-in for ai.inference.inference_service.InferenceService,
     so API-level tests don't require trained model weights (which don't exist in a
     fresh checkout — that's the whole point of `python train.py`)."""
 
-    def diagnose(self, image, top_k=3, save_heatmap_to=None):
-        from dataclasses import dataclass
+    decision_status = "confident"
+    model_version = "test-run:abc123"
+    architecture = "efficientnet_b0"
+    supported_classes = ["tomato___early_blight", "tomato___septoria_leaf_spot", "potato___early_blight"]
+    segmentation = None
 
-        @dataclass
-        class _Result:
-            unrecognized_plant: bool = False
-            plant: str = "tomato"
-            condition: str = "early_blight"
-            canonical_label: str = "tomato___early_blight"
-            confidence_score: float = 91.5
-            low_confidence_flag: bool = False
-            severity_level: str = "moderate"
-            affected_area_pct: float = 28.0
-            healthy_area_pct: float = 72.0
-            bounding_box: dict = None
-            top_k: list = None
-            heatmap_overlay_path: str = None
+    class _Thresholds:
+        @staticmethod
+        def to_dict():
+            return {"confident": 0.8, "reject": 0.3, "plant_mass": 0.6, "source": "validation",
+                    "temperature": 1.4, "calibrated": True}
 
+    thresholds = _Thresholds()
+
+    def diagnose(self, image, top_k=3, save_heatmap_to=None, **_kwargs):
         if save_heatmap_to is not None:
             Path(save_heatmap_to).parent.mkdir(parents=True, exist_ok=True)
             Image.new("RGB", (32, 32), color=(120, 40, 40)).save(save_heatmap_to)
-
-        return _Result(bounding_box={"x_min": 5, "y_min": 5, "x_max": 20, "y_max": 20}, top_k=[])
+        return fake_diagnosis_result(self.decision_status)
 
 
 @pytest.fixture()
@@ -120,9 +169,7 @@ def client(db_session, monkeypatch):
 
 @pytest.fixture()
 def sample_image_bytes() -> bytes:
-    buf = io.BytesIO()
-    Image.new("RGB", (64, 64), color=(80, 140, 60)).save(buf, format="JPEG")
-    return buf.getvalue()
+    return make_leaf_like_image_bytes()
 
 
 def make_auth_header(client, email="farmer@example.com", password="Str0ngPass!", full_name="Test Farmer") -> dict:
