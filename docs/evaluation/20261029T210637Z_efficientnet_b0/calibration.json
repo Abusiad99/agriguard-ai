@@ -1,0 +1,40 @@
+{
+  "temperature": 1.2281764786282499,
+  "thresholds": {
+    "confident_threshold": 0.8106356653902458,
+    "reject_threshold": 0.3771205397110089,
+    "target_selective_accuracy": 0.9,
+    "target_candidate_topk_accuracy": 0.75,
+    "candidate_top_k": 3,
+    "selection_split": "val",
+    "selection_n": 1535,
+    "confident_coverage": 0.33745928338762216,
+    "confident_accuracy": 0.9015444015444015,
+    "uncertain_coverage": 0.44299674267100975,
+    "uncertain_topk_accuracy": 0.836764705882353,
+    "rejected_coverage": 0.21954397394136807,
+    "target_met": true,
+    "notes": [],
+    "reject_method": "isotonic_local_topk"
+  },
+  "plant_mass_threshold": 0.6557037859841964,
+  "validation_metrics_before": {
+    "nll": 1.4424371601255206,
+    "brier": 0.5380206184905625,
+    "ece": 0.1025144129254401,
+    "mce": 0.2265658046318923,
+    "accuracy": 0.6156351791530945,
+    "mean_confidence": 0.7132410974936546
+  },
+  "validation_metrics_after": {
+    "nll": 1.3972619825001316,
+    "brier": 0.5259268098360728,
+    "ece": 0.04629350734369296,
+    "mce": 0.15809913323054747,
+    "accuracy": 0.6156351791530945,
+    "mean_confidence": 0.6367292224475577
+  },
+  "created_at": "2026-10-29T23:36:17.032648+00:00",
+  "schema_version": 1,
+  "method": "temperature_scaling"
+}

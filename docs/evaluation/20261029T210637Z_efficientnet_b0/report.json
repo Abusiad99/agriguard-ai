@@ -1,0 +1,271 @@
+{
+  "evaluated_at": "2026-10-29T23:40:15.550223+00:00",
+  "git_commit": "34d321d6c312bf00560a31ef9dda856445ae7898",
+  "split": "test",
+  "model": {
+    "model_version": "20261029T210637Z_efficientnet_b0:443d399c836c",
+    "run_dir": "20261029T210637Z_efficientnet_b0",
+    "architecture": "efficientnet_b0",
+    "weights_sha256": "443d399c836ca31302f2cf8c36afd0e5870061c633ea3bf90ce1f061d2d1a2a5",
+    "num_classes": 115,
+    "image_size": 224
+  },
+  "data": {
+    "n_images": 1535,
+    "n_classes_present": 115,
+    "split_sizes": {
+      "train": 7163,
+      "val": 1535,
+      "test": 1535
+    },
+    "split_fingerprint": "2ee97bcf13e131c35bd8838d18bc4f8dbd331628dbd700b612312d363a3fa7d9",
+    "manifest_fingerprint": "4673a60a7d483eca22d4c75a77873c41921df58fac0c38141a63a467fab09b57",
+    "source_datasets": [
+      "plantwild_v2"
+    ]
+  },
+  "classification": {
+    "accuracy": 0.6071661237785017,
+    "top3_accuracy": 0.8214983713355049,
+    "top5_accuracy": 0.8866449511400651,
+    "precision_macro": 0.5677542410711351,
+    "recall_macro": 0.5644256577596146,
+    "f1_macro": 0.5454592314203374,
+    "precision_weighted": 0.6338069875925249,
+    "recall_weighted": 0.6071661237785017,
+    "f1_weighted": 0.6011656898573055,
+    "per_class_csv": "per_class_metrics.csv"
+  },
+  "calibration": {
+    "temperature": 1.2281764786282499,
+    "calibrated": {
+      "nll": 1.4448238298647231,
+      "brier": 0.5334216706357721,
+      "ece": 0.0457189569048825,
+      "mce": 0.07630683565069885,
+      "accuracy": 0.6071661237785017,
+      "mean_confidence": 0.6208560665163945
+    },
+    "raw": {
+      "nll": 1.489583368231143,
+      "brier": 0.5428797719315358,
+      "ece": 0.09299198010179244,
+      "mce": 0.17361335021774704,
+      "accuracy": 0.6071661237785017,
+      "mean_confidence": 0.6993417241025821
+    }
+  },
+  "selective": {
+    "aurc": 0.19075350371109892,
+    "summary": [
+      {
+        "coverage": 1.0,
+        "selective_accuracy": 0.6071661237785017,
+        "confidence_threshold": 0.052247042282187135
+      },
+      {
+        "coverage": 0.9003257328990228,
+        "selective_accuracy": 0.6526772793053546,
+        "confidence_threshold": 0.25140828054083997
+      },
+      {
+        "coverage": 0.8,
+        "selective_accuracy": 0.6897394136807817,
+        "confidence_threshold": 0.34871019725166374
+      },
+      {
+        "coverage": 0.7003257328990228,
+        "selective_accuracy": 0.7246511627906976,
+        "confidence_threshold": 0.44982726129724276
+      },
+      {
+        "coverage": 0.6,
+        "selective_accuracy": 0.7654723127035831,
+        "confidence_threshold": 0.5253498252069047
+      },
+      {
+        "coverage": 0.5003257328990228,
+        "selective_accuracy": 0.8125,
+        "confidence_threshold": 0.6154598454919201
+      }
+    ]
+  },
+  "decision_thresholds": {
+    "available": true,
+    "confident_threshold": 0.8106356653902458,
+    "reject_threshold": 0.3771205397110089,
+    "selection_split": "val",
+    "target_selective_accuracy": 0.9,
+    "target_candidate_topk_accuracy": 0.75,
+    "candidate_top_k": 3,
+    "achieved_on_selection_split": {
+      "confident_coverage": 0.33745928338762216,
+      "confident_accuracy": 0.9015444015444015,
+      "uncertain_coverage": 0.44299674267100975,
+      "uncertain_topk_accuracy": 0.836764705882353,
+      "rejected_coverage": 0.21954397394136807,
+      "target_met": true
+    },
+    "applied": {
+      "n": 1535,
+      "confident_coverage": 0.3211726384364821,
+      "confident_accuracy": 0.8803245436105477,
+      "uncertain_coverage": 0.4495114006514658,
+      "uncertain_top1_accuracy": 0.5753623188405798,
+      "uncertain_topk_accuracy": 0.8579710144927536,
+      "rejected_coverage": 0.2293159609120521,
+      "rejected_top1_accuracy_if_forced": 0.2869318181818182
+    }
+  },
+  "per_class_flags": {
+    "min_support": 10,
+    "low_support": [
+      "banana___cigar_end_rot",
+      "banana___cordana_leaf_spot",
+      "banana___panama",
+      "basil___downy_mildew",
+      "bean___halo_blight",
+      "bean___mosaic_virus",
+      "blueberry___anthracnose",
+      "blueberry___botrytis_blight",
+      "blueberry___mummy_berry",
+      "blueberry___rust",
+      "blueberry___scorch",
+      "broccoli___alternaria_leaf_spot",
+      "broccoli___downy_mildew",
+      "broccoli___ring_spot",
+      "cabbage___alternaria_leaf_spot",
+      "carrot___alternaria_leaf_blight",
+      "carrot___cercospora_leaf_blight",
+      "cauliflower___alternaria_leaf_spot",
+      "cauliflower___bacterial_soft_rot",
+      "celery___anthracnose",
+      "celery___early_blight",
+      "cherry___powdery_mildew",
+      "coffee___black_rot",
+      "coffee___brown_eye_spot",
+      "eggplant___cercospora_leaf_spot",
+      "eggplant___phomopsis_fruit_rot",
+      "eggplant___phytophthora_blight",
+      "ginger___leaf_spot",
+      "ginger___sheath_blight",
+      "lettuce___mosaic_virus",
+      "peach___anthracnose",
+      "peach___rust",
+      "peach___scab",
+      "pepper___bacterial_spot",
+      "pepper___frogeye_leaf_spot",
+      "pepper___powdery_mildew",
+      "plum___bacterial_spot",
+      "plum___pocket",
+      "plum___pox_virus",
+      "plum___rust",
+      "raspberry___fire_blight",
+      "raspberry___gray_mold",
+      "raspberry___leaf_spot",
+      "raspberry___yellow_rust",
+      "soybean___brown_spot",
+      "strawberry___anthracnose",
+      "strawberry___leaf_scorch",
+      "tobacco___blue_mold",
+      "tobacco___brown_spot",
+      "tobacco___frogeye_leaf_spot",
+      "tobacco___mosaic_virus",
+      "tomato___mosaic_virus",
+      "zucchini___downy_mildew"
+    ],
+    "low_f1": [
+      "broccoli___ring_spot",
+      "carrot___cercospora_leaf_blight",
+      "cauliflower___alternaria_leaf_spot",
+      "coffee___black_rot",
+      "peach___anthracnose",
+      "peach___rust",
+      "pepper___frogeye_leaf_spot",
+      "plum___bacterial_spot",
+      "bean___rust",
+      "tomato___mosaic_virus",
+      "bean___mosaic_virus",
+      "tobacco___blue_mold",
+      "raspberry___fire_blight",
+      "blueberry___botrytis_blight",
+      "cabbage___alternaria_leaf_spot",
+      "cherry___powdery_mildew",
+      "wheat___bacterial_leaf_streak_black_chaff",
+      "eggplant___phytophthora_blight",
+      "tobacco___frogeye_leaf_spot",
+      "wheat___septoria_blotch",
+      "broccoli___downy_mildew",
+      "eggplant___cercospora_leaf_spot",
+      "apple___black_rot",
+      "squash___powdery_mildew",
+      "tobacco___brown_spot",
+      "bean___halo_blight",
+      "broccoli___alternaria_leaf_spot",
+      "raspberry___leaf_spot",
+      "zucchini___downy_mildew",
+      "grape___leaf_spot",
+      "tomato___bacterial_spot",
+      "blueberry___scorch",
+      "potato___early_blight",
+      "wheat___stripe_rust",
+      "zucchini___powdery_mildew",
+      "plum___pox_virus",
+      "soybean___rust",
+      "tomato___late_blight",
+      "ginger___sheath_blight",
+      "rice___blast",
+      "apple___scab",
+      "garlic___rust"
+    ]
+  },
+  "latency": {
+    "device": "cpu",
+    "torch_threads": 4,
+    "n_images": 50,
+    "p50_ms": 21.505181999998513,
+    "p95_ms": 40.28358364996618,
+    "mean_ms": 25.010270620011852,
+    "parameters": 4154863,
+    "weights_file_mb": 16.89,
+    "peak_rss_mb": 1531.1,
+    "note": "Excludes Grad-CAM (one extra backward pass) and the quality gate."
+  },
+  "config": {
+    "inference": {
+      "plant_id_confidence_threshold": 0.55,
+      "disease_low_confidence_threshold": 0.6,
+      "reject_confidence_default": 0.3,
+      "confident_threshold_override": null,
+      "reject_threshold_override": null,
+      "target_selective_accuracy": 0.9,
+      "target_candidate_topk_accuracy": 0.75,
+      "candidate_top_k": 3,
+      "severity_mild_max_pct": 15.0,
+      "severity_moderate_max_pct": 40.0
+    },
+    "data": {
+      "image_size": 224,
+      "seed": 42
+    }
+  },
+  "limitations": [
+    "Test images come from the same web-collected source distribution as training; this is not an independent field validation.",
+    "The dataset contains no healthy-plant images and no non-plant / unsupported-disease images, so the model cannot output 'healthy' and its ability to reject unknown conditions is NOT measured here.",
+    "Classes with few test images have unreliable per-class metrics (see per_class_flags).",
+    "Calibration (temperature) and thresholds were fitted on the validation split; numbers here are held-out only if this report is for the test split."
+  ],
+  "leakage": {
+    "hamming_threshold": 4,
+    "exact_duplicates_across_splits": {
+      "train-val": 0,
+      "train-test": 0,
+      "val-test": 0
+    },
+    "near_duplicates_vs_train": {
+      "train-val": 0,
+      "train-test": 0
+    },
+    "near_duplicate_examples": []
+  }
+}

@@ -263,7 +263,7 @@ def main() -> int:
         "split": args.split,
         "model": {
             "model_version": bundle.model_version,
-            "run_dir": str(run_dir),
+            "run_dir": run_dir.name,  # the folder name only: reports are shareable and never expose local paths
             "architecture": bundle.architecture,
             "weights_sha256": bundle.weights_sha256,
             "num_classes": bundle.label_encoder.num_classes,

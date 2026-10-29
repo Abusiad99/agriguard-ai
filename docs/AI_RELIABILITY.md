@@ -105,7 +105,7 @@ The report also records the model version, git commit, split fingerprint, leakag
 
 ### Results on the held-out test split
 
-From `artifacts/runs/20261029T210637Z_efficientnet_b0/evaluation_test/report.md` (git `34d321d6c3`, 1,535 images, all 115 classes present, split fingerprint `2ee97bcf13e131c3`). The test split played no part in training, calibration or threshold selection.
+From `artifacts/runs/20261029T210637Z_efficientnet_b0/evaluation_test/report.md`, copied with the plots and per-class tables to [docs/evaluation/20261029T210637Z_efficientnet_b0/](evaluation/20261029T210637Z_efficientnet_b0/) (git `34d321d6c3`, 1,535 images, all 115 classes present, split fingerprint `2ee97bcf13e131c3`). The test split played no part in training, calibration or threshold selection.
 
 **Classification (always answering, no abstention):**
 
