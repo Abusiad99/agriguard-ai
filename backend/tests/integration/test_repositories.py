@@ -129,16 +129,40 @@ class TestDiagnosisRepository:
                                        full_name="Dash", role=UserRole.FARMER))
         plant = plant_repo.get_or_create("tomato")
 
+        # A confident prediction of a healthy class counts as healthy...
         diagnosis_repo.create(Diagnosis(
             id=None, user_id=user.id, plant_id=plant.id, disease_id=None,
             confidence_score=99.0, severity_level=None, affected_area_pct=None,
             healthy_area_pct=None, original_image_ref="scans/healthy.jpg",
+            decision_status="confident", predicted_label="tomato___healthy",
+        ))
+        # ...but a row without a disease record is NOT automatically healthy (that used
+        # to happen whenever the knowledge base simply lacked the disease).
+        diagnosis_repo.create(Diagnosis(
+            id=None, user_id=user.id, plant_id=plant.id, disease_id=None,
+            confidence_score=99.0, severity_level=None, affected_area_pct=None,
+            healthy_area_pct=None, original_image_ref="scans/legacy.jpg",
+        ))
+        diagnosis_repo.create(Diagnosis(
+            id=None, user_id=user.id, plant_id=plant.id, disease_id=None,
+            confidence_score=95.0, severity_level=None, affected_area_pct=None,
+            healthy_area_pct=None, original_image_ref="scans/blight.jpg",
+            decision_status="confident", predicted_label="tomato___early_blight",
+        ))
+        diagnosis_repo.create(Diagnosis(
+            id=None, user_id=user.id, plant_id=plant.id, disease_id=None,
+            confidence_score=40.0, severity_level=None, affected_area_pct=None,
+            healthy_area_pct=None, original_image_ref="scans/unsure.jpg",
+            decision_status="uncertain", predicted_label="tomato___late_blight",
         ))
 
         summary = diagnosis_repo.dashboard_summary(user_id=user.id)
-        assert summary["total_scans"] == 1
+        assert summary["total_scans"] == 4
         assert summary["healthy_count"] == 1
-        assert summary["diseased_count"] == 0
+        assert summary["diseased_count"] == 1
+        assert summary["uncertain_count"] == 1
+        assert summary["confident_count"] == 2
+        assert summary["most_common_diseases"] == [{"name": "tomato___early_blight", "count": 1}]
 
     def test_attach_report_links_report_to_diagnosis(self, db_session):
         user_repo = SqlAlchemyUserRepository(db_session)

@@ -51,6 +51,12 @@ PREVENTION_ADVICE = [
 ]
 
 
+def _visible_label(d: Diagnosis) -> Optional[str]:
+    """The model's top-1 label is stored for every observation (audit trail), but an
+    inconclusive result deliberately names no condition, so it is not exposed."""
+    return None if d.decision_status == "inconclusive" else d.predicted_label
+
+
 def measurement_basis(d: Diagnosis) -> Optional[str]:
     if d.affected_area_pct is None:
         return None
@@ -250,8 +256,8 @@ def diagnosis_to_response(d: Diagnosis, plant_repo=None, disease_repo=None, trea
         ai_analysis=ai_analysis_to_schema(d),
         decision_status=d.decision_status or "legacy",
         is_legacy=d.is_legacy,
-        predicted_label=d.predicted_label,
-        predicted_display_name=display_label(d.predicted_label),
+        predicted_label=_visible_label(d),
+        predicted_display_name=display_label(_visible_label(d)),
         decision=decision,
         image_quality=quality,
         explanation=explanation,
@@ -282,8 +288,8 @@ def diagnosis_to_summary(d: Diagnosis, plant_names: Optional[dict] = None,
         thumbnail_url=sign_media_url(d.original_image_ref),
         diagnosed_at=d.diagnosed_at,
         decision_status=d.decision_status or "legacy",
-        predicted_label=d.predicted_label,
-        predicted_display_name=display_label(d.predicted_label),
+        predicted_label=_visible_label(d),
+        predicted_display_name=display_label(_visible_label(d)),
         plant_profile_id=str(d.plant_profile_id) if d.plant_profile_id else None,
         plant_profile_name=profile_names.get(d.plant_profile_id),
         affected_area_pct=d.affected_area_pct if d.has_segmentation_measurement else None,

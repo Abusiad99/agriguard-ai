@@ -21,7 +21,25 @@ import pytest
 
 from app.application.services.gemini_analysis_service import GeminiAnalysisService
 from app.domain.entities.disease import Disease, Plant, Treatment, TreatmentCategory
-from app.infrastructure.external.gemini_client import GeminiClient, GeminiRequestContext, _GeminiTools
+from types import SimpleNamespace
+
+from app.infrastructure.external import gemini_client as gemini_module
+from app.infrastructure.external.gemini_client import GeminiClient, GeminiRequestContext
+
+
+def _GeminiTools(plant_repo, disease_repo, treatment_repo, weather_summary=None):
+    """Adapter for the current tool design: the tool functions are module-level and
+    read the request's repositories from a ContextVar (see gemini_client.py's
+    "NOTE ON TOOLS BEING MODULE-LEVEL PLAIN FUNCTIONS")."""
+    gemini_module._tools_ctx.set(gemini_module._ToolsRuntimeContext(
+        plant_repo=plant_repo, disease_repo=disease_repo, treatment_repo=treatment_repo,
+        weather_summary=weather_summary))
+    return SimpleNamespace(
+        get_plant_info=gemini_module.get_plant_info,
+        get_disease_info=gemini_module.get_disease_info,
+        get_treatment_info=gemini_module.get_treatment_info,
+        get_weather=gemini_module.get_weather,
+    )
 
 
 def _make_ctx() -> GeminiRequestContext:

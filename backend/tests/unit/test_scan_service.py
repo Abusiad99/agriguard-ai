@@ -28,9 +28,10 @@ from app.domain.entities.disease import Plant
 
 
 def _make_test_image_bytes() -> bytes:
-    buf = io.BytesIO()
-    Image.new("RGB", (48, 48), color=(90, 130, 60)).save(buf, format="JPEG")
-    return buf.getvalue()
+    # Textured and well exposed so it passes the image-quality gate that now runs first.
+    from tests.conftest import make_leaf_like_image_bytes
+
+    return make_leaf_like_image_bytes()
 
 
 @pytest.fixture()
@@ -98,25 +99,49 @@ class TestImageValidation:
         mocks["storage"].save_bytes.assert_called_once()
 
 
-class TestUnrecognizedPlantFlow:
-    """FR-AI-12, Alt Flow A1: pipeline halts after Step 1 for low plant-ID confidence."""
+class TestQualityGateAndInconclusiveFlow:
+    """Pipeline 2.0: unusable photos stop before storage; inconclusive model results are
+    persisted as observations but never name a disease."""
 
-    def test_unrecognized_plant_short_circuits_before_persistence(self, orchestrator, mocks):
-        from dataclasses import dataclass
-
-        @dataclass
-        class FakeUnrecognized:
-            unrecognized_plant: bool = True
-            confidence_score: float = 12.0
-
-        mocks["ai_client"].diagnose.return_value = FakeUnrecognized()
-
-        result = orchestrator.process_scan(
-            user_id=uuid.uuid4(), image_bytes=_make_test_image_bytes(), content_type="image/jpeg",
-        )
-        assert result.status == "unrecognized_plant"
+    def test_unusable_photo_is_rejected_before_storage_and_inference(self, orchestrator, mocks):
+        buf = io.BytesIO()
+        Image.new("RGB", (300, 300), color=(2, 2, 2)).save(buf, format="JPEG")
+        result = orchestrator.process_scan(user_id=uuid.uuid4(), image_bytes=buf.getvalue(), content_type="image/jpeg")
+        assert result.status == "rejected_image_quality"
+        assert result.quality["status"] == "rejected"
+        mocks["storage"].save_bytes.assert_not_called()
+        mocks["ai_client"].diagnose.assert_not_called()
         mocks["diagnosis_repo"].create.assert_not_called()
-        mocks["pdf_generator"].generate.assert_not_called()
+
+    def test_inconclusive_result_is_saved_without_disease_or_gemini(self, orchestrator, mocks):
+        from tests.conftest import fake_diagnosis_result
+
+        mocks["ai_client"].diagnose.return_value = fake_diagnosis_result("inconclusive", unrecognized_plant=True)
+        mocks["diagnosis_repo"].create.return_value = MagicMock(id=uuid.uuid4())
+        mocks["diagnosis_repo"].get_by_id.return_value = MagicMock(id=uuid.uuid4())
+
+        result = orchestrator.process_scan(user_id=uuid.uuid4(), image_bytes=_make_test_image_bytes(),
+                                           content_type="image/jpeg")
+        assert result.status == "completed"
+        saved = mocks["diagnosis_repo"].create.call_args[0][0]
+        assert saved.decision_status == "inconclusive"
+        assert saved.disease_id is None and saved.plant_id is None and saved.unrecognized_plant is True
+        assert saved.differential["model_candidates"] == []
+        mocks["disease_repo"].get_current_by_plant_and_name.assert_not_called()
+        mocks["gemini_service"].analyze.assert_not_called()
+
+    def test_uncertain_result_never_links_a_disease_record(self, orchestrator, mocks):
+        from tests.conftest import fake_diagnosis_result
+
+        mocks["ai_client"].diagnose.return_value = fake_diagnosis_result("uncertain")
+        mocks["diagnosis_repo"].create.return_value = MagicMock(id=uuid.uuid4())
+        mocks["diagnosis_repo"].get_by_id.return_value = MagicMock(id=uuid.uuid4())
+        orchestrator.process_scan(user_id=uuid.uuid4(), image_bytes=_make_test_image_bytes(), content_type="image/jpeg")
+        saved = mocks["diagnosis_repo"].create.call_args[0][0]
+        assert saved.decision_status == "uncertain" and saved.disease_id is None
+        assert saved.predicted_label == "tomato___early_blight"
+        assert len(saved.candidates) == 3 and saved.differential["expert_review_recommended"]
+        mocks["disease_repo"].get_current_by_plant_and_name.assert_not_called()
 
 
 class TestWeatherDegradation:

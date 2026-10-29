@@ -16,6 +16,10 @@ x-backend-common: &backend-common
     WEATHER_API_BASE_URL: ${WEATHER_API_BASE_URL:-https://api.open-meteo.com/v1/forecast}
     GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
+    # Trust X-Forwarded-For from the reverse proxy so per-client rate limits see the
+    # real client IP. Safe only because the backend port is bound to loopback below
+    # and nginx overwrites the header with $remote_addr.
+    FORWARDED_ALLOW_IPS: "*"
 
   volumes:
     - storage_data:/app/storage
@@ -98,7 +102,7 @@ services:
       start_period: 20s
 
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"   # loopback only: external traffic must go through nginx
 
 
   # Frontend: a one-shot build container.

@@ -91,49 +91,53 @@ def chunk_text(text: str, target_chars: int = 900, overlap_chars: int = 150) -> 
     """Split on paragraph/sentence boundaries into ~target_chars chunks, carrying the
     last ~overlap_chars of the previous chunk forward so a fact that straddles a
     boundary is retrievable from either side. Markdown-style '# ' headings become the
-    `section` metadata of the chunks that follow them."""
+    `section` metadata of the chunks that follow them. No text is ever dropped: any
+    content not yet emitted is flushed before a heading and at the end."""
     chunks: List[Chunk] = []
     section: Optional[str] = None
     buf: List[str] = []
     buf_len = 0
+    fresh = False  # buffer holds text that has not been emitted in any chunk yet
 
-    def flush():
-        nonlocal buf, buf_len
+    def flush(carry_overlap: bool = True):
+        nonlocal buf, buf_len, fresh
         body = " ".join(buf).strip()
-        if body:
+        if body and fresh:
             chunks.append(Chunk(index=len(chunks), text=body, section=section))
-            tail = body[-overlap_chars:] if overlap_chars else ""
-            if tail and " " in tail:
+        buf, buf_len, fresh = [], 0, False
+        if carry_overlap and body and overlap_chars:
+            tail = body[-overlap_chars:]
+            if " " in tail:
                 tail = tail[tail.index(" ") + 1:]
-            buf, buf_len = ([tail], len(tail)) if tail else ([], 0)
-        else:
-            buf, buf_len = [], 0
+            if tail:
+                buf, buf_len = [tail], len(tail)
+
+    def add(piece: str):
+        nonlocal buf_len, fresh
+        buf.append(piece)
+        buf_len += len(piece) + 1
+        fresh = True
 
     for block in text.split("\n"):
         line = block.strip()
         if not line:
             continue
         if line.startswith("#"):
-            if buf_len > overlap_chars:
-                flush()
-            buf, buf_len = [], 0
+            flush(carry_overlap=False)  # overlap never crosses a section boundary
             section = line.lstrip("#").strip()[:300] or section
             continue
         for sentence in _SENTENCE_SPLIT.split(line):
             sentence = sentence.strip()
-            if not sentence:
-                continue
             while len(sentence) > target_chars * 1.5:  # very long run-on text
                 head, sentence = sentence[:target_chars], sentence[target_chars:]
-                buf.append(head)
-                buf_len += len(head)
+                add(head)
                 flush()
-            if buf_len + len(sentence) > target_chars and buf_len > overlap_chars:
+            if not sentence:
+                continue
+            if fresh and buf_len + len(sentence) > target_chars:
                 flush()
-            buf.append(sentence)
-            buf_len += len(sentence) + 1
-    if buf_len > overlap_chars or (buf and not chunks):
-        flush()
+            add(sentence)
+    flush(carry_overlap=False)
     return chunks
 
 

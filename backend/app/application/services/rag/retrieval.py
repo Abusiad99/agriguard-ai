@@ -8,9 +8,10 @@ Hybrid retriever over knowledge chunks.
 * Fusion: reciprocal-rank fusion (RRF, k=60) of the two rankings, plus a small boost
   for chunks whose document metadata matches the crop/disease in context.
 
-A chunk is only returned if its lexical score passes a minimum relevance floor or it
-ranks highly semantically; otherwise the assistant reports that no relevant source
-was found instead of padding the prompt with unrelated text.
+A chunk is only returned if it contains enough of the question's terms (term
+coverage — unlike a raw BM25 floor this does not depend on corpus size) or is highly
+similar semantically; otherwise the assistant reports that no relevant source was
+found instead of padding the prompt with unrelated text.
 """
 from __future__ import annotations
 
@@ -69,6 +70,13 @@ class HybridIndex:
     def __len__(self) -> int:
         return len(self.chunks)
 
+    def term_coverage(self, query: str) -> List[float]:
+        """Fraction of distinct query terms that occur in each chunk."""
+        q = set(tokenize(query))
+        if not q:
+            return [0.0] * len(self.chunks)
+        return [len(q & tf.keys()) / len(q) for tf in self._tf]
+
     def bm25_scores(self, query: str) -> List[float]:
         q = [t for t in tokenize(query) if t in self._idf]
         if not q or not self.chunks:
@@ -86,10 +94,13 @@ class HybridIndex:
 
     def search(self, query: str, top_k: int = 5, query_embedding: Optional[List[float]] = None,
                embedding_model: Optional[str] = None, crops: Sequence[str] = (), diseases: Sequence[str] = (),
-               min_bm25: float = 1.0, min_cosine: float = 0.55) -> List[RetrievedChunk]:
+               min_coverage: float = 0.3, min_matched_terms: int = 3,
+               min_cosine: float = 0.55) -> List[RetrievedChunk]:
         if not self.chunks:
             return []
         bm25 = self.bm25_scores(query)
+        coverage = self.term_coverage(query)
+        n_query_terms = len(set(tokenize(query)))
         cosine: List[Optional[float]] = [None] * len(self.chunks)
         if query_embedding:
             for i, c in enumerate(self.chunks):
@@ -103,7 +114,9 @@ class HybridIndex:
         diseases_l = {d.lower() for d in diseases if d}
         fused = []
         for i, c in enumerate(self.chunks):
-            relevant = bm25[i] >= min_bm25 or (cosine[i] is not None and cosine[i] >= min_cosine)
+            matched = round(coverage[i] * n_query_terms)
+            lexical_ok = bm25[i] > 0 and (coverage[i] >= min_coverage or matched >= min_matched_terms)
+            relevant = lexical_ok or (cosine[i] is not None and cosine[i] >= min_cosine)
             if not relevant:
                 continue
             score = 0.0

@@ -82,3 +82,78 @@ class TestDiagnosisHistory:
         body = resp.json()
         assert body["total"] == 2
         assert len(body["items"]) == 2
+
+
+def _set_fake_status(status: str):
+    from app.infrastructure.external import ai_pipeline_client
+
+    ai_pipeline_client.AiPipelineClient._service.decision_status = status
+
+
+class TestReliabilityBehaviour:
+    def test_unusable_photo_is_rejected_with_feedback_and_nothing_is_stored(self, client):
+        headers = make_auth_header(client, email="dark@example.com")
+        buf = io.BytesIO()
+        Image.new("RGB", (400, 400), color=(3, 4, 2)).save(buf, format="JPEG")
+        buf.seek(0)
+        resp = client.post("/api/v1/scans", headers=headers, files={"image": ("dark.jpg", buf, "image/jpeg")})
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["status"] == "rejected_image_quality"
+        codes = {i["code"] for i in body["quality"]["issues"]}
+        assert codes & {"no_detail", "too_dark"}
+        assert all(i["hint"] for i in body["quality"]["issues"])
+        assert client.get("/api/v1/diagnoses", headers=headers).json()["total"] == 0
+
+    def test_tiny_image_is_rejected(self, client):
+        headers = make_auth_header(client, email="tiny@example.com")
+        resp = client.post("/api/v1/scans", headers=headers,
+                           files={"image": ("t.jpg", io.BytesIO(make_leaf_like_image_bytes(size=64)), "image/jpeg")})
+        assert resp.json()["status"] == "rejected_image_quality"
+
+    def test_uncertain_result_is_saved_without_asserting_a_disease(self, client):
+        _set_fake_status("uncertain")
+        headers = make_auth_header(client, email="unsure@example.com")
+        body = client.post("/api/v1/scans", headers=headers, files={"image": _image_file()}).json()
+        assert body["decision_status"] == "uncertain"
+        assert body["disease"] is None and body["treatment"] is None
+        assert body["low_confidence_flag"] is True
+        assert body["differential"]["expert_review_recommended"] is True
+        assert "model_not_confident" in body["differential"]["expert_review_reasons"]
+        assert len(body["differential"]["model_candidates"]) == 3
+        assert body["ai_analysis"] is None  # Gemini explanation only for confident results
+        assert body["recommendation"]["spraying_advice"] is None
+        listed = client.get("/api/v1/diagnoses?decision_status=uncertain", headers=headers).json()
+        assert listed["total"] == 1
+
+    def test_inconclusive_result_names_no_condition(self, client):
+        _set_fake_status("inconclusive")
+        headers = make_auth_header(client, email="inconclusive@example.com")
+        body = client.post("/api/v1/scans", headers=headers, files={"image": _image_file()}).json()
+        assert body["decision_status"] == "inconclusive"
+        assert body["disease"] is None and body["predicted_label"] is None
+        assert body["differential"]["model_candidates"] == []
+        assert body["report_url"]  # a report is still produced, saying "inconclusive"
+
+    def test_images_are_served_only_through_signed_urls(self, client):
+        _set_fake_status("confident")
+        headers = make_auth_header(client, email="media@example.com")
+        body = client.post("/api/v1/scans", headers=headers, files={"image": _image_file()}).json()
+        url = body["original_image_url"]
+        assert url.startswith("/api/v1/media/scans/") and "sig=" in url
+        ok = client.get(url)
+        assert ok.status_code == 200 and ok.headers["content-type"] == "image/jpeg"
+        tampered = url[:-4] + ("0000" if not url.endswith("0000") else "1111")
+        assert client.get(tampered).status_code == 403
+        assert client.get(url.split("?")[0]).status_code == 400  # missing signature
+        ref = url.split("/media/")[1].split("?")[0]
+        assert client.get(f"/storage/{ref}").status_code == 404  # public static mount removed
+
+    def test_response_exposes_provenance(self, client):
+        _set_fake_status("confident")
+        headers = make_auth_header(client, email="prov@example.com")
+        body = client.post("/api/v1/scans", headers=headers, files={"image": _image_file()}).json()
+        assert body["model_version"] == "test-run:abc123" and body["pipeline_version"] == "2.0.0"
+        assert body["decision"]["thresholds"]["source"] == "validation"
+        assert body["explanation"]["method"] == "grad_cam"
+        assert body["image_quality"]["status"] == "ok"

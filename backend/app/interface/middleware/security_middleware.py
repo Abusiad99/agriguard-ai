@@ -38,9 +38,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     _SCAN_PATHS = ("/api/v1/scans",)
     _ASSISTANT_PATHS = ("/api/v1/assistant/chat",)
 
+    _MAX_KEYS = 50_000
+
     def __init__(self, app):
         super().__init__(app)
         self._hits: dict[str, deque] = defaultdict(deque)
+
+    def _prune(self, now: float) -> None:
+        """Drop idle keys so the table cannot grow without bound (paths contain ids,
+        so every distinct resource URL creates a key)."""
+        horizon = now - 3600
+        for key in [k for k, w in self._hits.items() if not w or w[-1] < horizon]:
+            del self._hits[key]
 
     def _limit_for(self, path: str) -> tuple[int, int] | None:
         if path in self._AUTH_PATHS:
@@ -57,6 +66,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         key = f"{client_ip}:{request.url.path}"
 
         now = time.monotonic()
+        if len(self._hits) > self._MAX_KEYS:
+            self._prune(now)
         window = self._hits[key]
         while window and window[0] < now - window_seconds:
             window.popleft()
