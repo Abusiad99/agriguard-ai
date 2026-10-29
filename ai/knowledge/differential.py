@@ -37,7 +37,14 @@ from ai.knowledge.taxonomy import (
     describe,
 )
 
-DIFFERENTIAL_VERSION = "1.0.0"
+DIFFERENTIAL_VERSION = "1.1.0"
+
+# Only candidates with at least this calibrated probability (percent) count when
+# deciding whether to recommend expert review. A 3 % runner-up of another cause type
+# should not turn a 94 % result into a "candidates disagree" warning. Regulated
+# pathogens use a lower floor because missing one is costly.
+PLAUSIBLE_CANDIDATE_MIN_PCT = 10.0
+REGULATED_CANDIDATE_MIN_PCT = 5.0
 
 FOLLOW_UP_QUESTIONS: List[dict] = [
     {"id": "affected_parts", "type": "multi",
@@ -97,6 +104,7 @@ def build_differential(candidates: List[dict], decision_status: Optional[str],
     model_candidates = []
     patterns: set = set()
     cause_types = set()
+    plausible_cause_types: set = set()
     regulated = []
     for c in candidates:
         meta = describe(c.get("canonical", ""))
@@ -112,10 +120,24 @@ def build_differential(candidates: List[dict], decision_status: Optional[str],
         })
         patterns.update(meta["patterns"])
         cause_types.add(meta["cause_type"])
-        if meta["regulated"]:
+        prob = float(c.get("confidence") or 0.0)
+        if prob >= PLAUSIBLE_CANDIDATE_MIN_PCT:
+            plausible_cause_types.add(meta["cause_type"])
+        if meta["regulated"] and prob >= REGULATED_CANDIDATE_MIN_PCT:
             regulated.append(c.get("canonical"))
 
-    leading_patterns = set(model_candidates[0]["symptom_patterns"]) if model_candidates else set()
+    if decision_status == "inconclusive":
+        # The candidates are withheld for an inconclusive result, so nothing derived
+        # from them (look-alikes, question selection, cause-based hints) is shown
+        # either: that would reveal the hidden guess indirectly.
+        patterns, cause_types = set(), set()
+        model_candidates_for_ui: List[dict] = []
+        questions = [q["id"] for q in FOLLOW_UP_QUESTIONS]
+    else:
+        model_candidates_for_ui = model_candidates
+        questions = _relevant_questions(patterns)
+
+    leading_patterns = set(model_candidates_for_ui[0]["symptom_patterns"]) if model_candidates_for_ui else set()
     also_consider: List[str] = []
     for p in sorted(leading_patterns or patterns):
         for cat in LOOKALIKES.get(p, []):
@@ -125,7 +147,7 @@ def build_differential(candidates: List[dict], decision_status: Optional[str],
     reasons = []
     if decision_status != "confident":
         reasons.append("model_not_confident")
-    if len(cause_types - {"unknown"}) > 1 and len(model_candidates) > 1:
+    if len(plausible_cause_types - {"unknown"}) > 1:
         reasons.append("candidates_differ_in_cause_type")
     if regulated:
         reasons.append("possible_regulated_pathogen")
@@ -134,10 +156,10 @@ def build_differential(candidates: List[dict], decision_status: Optional[str],
         "version": DIFFERENTIAL_VERSION,
         "taxonomy_version": TAXONOMY_VERSION,
         "decision_status": decision_status,
-        "model_candidates": model_candidates if decision_status != "inconclusive" else [],
+        "model_candidates": model_candidates_for_ui,
         "also_consider": also_consider,
         "not_assessable_by_model": ALL_NON_MODEL_CATEGORIES,
-        "follow_up_questions": _relevant_questions(patterns),
+        "follow_up_questions": questions,
         "answers": answers,
         "hints": derive_hints(answers, patterns, cause_types),
         "expert_review_recommended": bool(reasons),

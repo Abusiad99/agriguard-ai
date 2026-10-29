@@ -123,7 +123,20 @@ def test_differential_marks_unsupported_categories_and_never_changes_probabiliti
     assert "nutrient_deficiency" in d["not_assessable_by_model"]
     assert d["answers"] == {"pests_seen": "yes"}
     assert any(h["code"] == "pests_seen_check_pest_damage" for h in d["hints"])
-    assert build_differential(cands, "inconclusive")["model_candidates"] == []
+    inconclusive = build_differential(cands, "inconclusive", {"recent_weather": "wet_or_humid"})
+    assert inconclusive["model_candidates"] == [] and inconclusive["also_consider"] == []
+    assert len(inconclusive["follow_up_questions"]) == 8  # nothing hidden steers the questions
+    assert not any("foliar" in h["code"] for h in inconclusive["hints"])  # no hint from hidden causes
+
+
+def test_negligible_candidates_do_not_trigger_expert_review_for_a_confident_result():
+    cands = [{"canonical": "eggplant___cercospora_leaf_spot", "confidence": 93.8},
+             {"canonical": "zucchini___yellow_mosaic_virus", "confidence": 2.9},
+             {"canonical": "citrus___citrus_greening", "confidence": 1.2}]
+    d = build_differential(cands, "confident")
+    assert not d["expert_review_recommended"] and d["regulated_candidates"] == []
+    cands[2]["confidence"] = 6.0  # a regulated pathogen is flagged from 5 %
+    assert build_differential(cands, "confident")["expert_review_reasons"] == ["possible_regulated_pathogen"]
 
 
 def test_answer_validation_and_taxonomy():

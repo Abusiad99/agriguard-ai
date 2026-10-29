@@ -9,7 +9,7 @@ A plant-health assistant for farmers. It analyses a photo of a leaf or plant par
 | Capability | Status | Details |
 |---|---|---|
 | Image-quality gate (blur, exposure, resolution, blank or non-plant hints, format, size, decompression bombs) | **Implemented and tested** | `ai/quality/`, [AI reliability](docs/AI_RELIABILITY.md) |
-| Disease classifier: PlantWild v2, 115 classes, EfficientNet-B0 | **Implemented, trained and evaluated** on held-out web photos; not field-validated | [AI reliability](docs/AI_RELIABILITY.md) |
+| Disease classifier: PlantWild v2, 115 classes on 34 plant types, EfficientNet-B0 | **Implemented, trained and evaluated** on held-out web photos (top-1 60.7 %, top-3 82.2 %; confident answers 88 % correct on 32 % of photos); not field-validated | [AI reliability](docs/AI_RELIABILITY.md) |
 | Calibrated confidence, statuses (confident / uncertain / inconclusive), validation-selected thresholds | **Implemented and tested** | `ai/inference/calibration.py`, `ai/inference/decision.py` |
 | Grad-CAM "model attention" next to the original photo | **Implemented and tested** (labelled as attention, not a lesion map) | `ai/explainability/` |
 | Reproducible evaluation (metrics, calibration, risk–coverage, leakage check, latency) | **Implemented and run** | `evaluate.py` |

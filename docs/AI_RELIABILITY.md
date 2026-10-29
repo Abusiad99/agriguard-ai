@@ -21,7 +21,26 @@ These problems were found in the code on `main` before this work. Each is fixed 
 
 ## 2. Training run
 
-<!-- RESULTS_PENDING: training -->
+Run `20261029T210637Z_efficientnet_b0`, model version `20261029T210637Z_efficientnet_b0:443d399c836c` (the suffix is the start of the weights file's SHA-256). Produced by `python train.py` on this repository; log excerpts below are from that run.
+
+| | |
+|---|---|
+| Data | PlantWild v2 (Git LFS): 11,488 readable images, 0 corrupt. Deduplication removed 1,255 exact or near duplicates, leaving **10,233 images in 115 classes on 34 plant types** |
+| Split | stratified 70 / 15 / 15 with seed 42: **7,163 train, 1,535 validation, 1,535 test**. The exact split is saved as `split_manifest.csv` with a fingerprint |
+| Model | EfficientNet-B0 (4.15 M parameters, 16.9 MB weights) from ImageNet weights (timm release `efficientnet_b0_ra-3dd342df.pth`; 358 of 360 tensors loaded, the classifier head is new) |
+| Training | AdamW, learning rate 3e-4, weight decay 1e-4, batch 32, 224 px, augmentation on the training split only, class-balanced sampling. 1 epoch with the backbone frozen, then 7 epochs of full fine-tuning |
+| Hardware | 4-core CPU, no GPU. About 74 minutes in total |
+| Kept weights | Epoch 6 of 8, which had the lowest validation loss (1.4424); restored automatically at the end |
+
+| Epoch | 1 | 2 | 3 | 4 | 5 | **6** | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Train accuracy | 0.164 | 0.562 | 0.772 | 0.839 | 0.881 | **0.905** | 0.925 | 0.932 |
+| Validation accuracy | 0.176 | 0.470 | 0.554 | 0.594 | 0.597 | **0.616** | 0.624 | 0.623 |
+| Validation loss | 4.301 | 3.748 | 1.638 | 1.518 | 1.484 | **1.442** | 1.460 | 1.463 |
+
+The model fits the training images much better than the validation images (90 % against 62 % accuracy at epoch 6). More data per class, stronger augmentation, a larger backbone or GPU training for more epochs are the obvious next steps. None of them was tried here.
+
+The trained weights are **not committed** (`artifacts/` is git-ignored). Re-running `python train.py` with the same seed reproduces the split exactly. On CPU the weights can differ slightly from run to run, so re-evaluate after retraining.
 
 ## 3. Calibration and decision thresholds
 
@@ -44,7 +63,28 @@ The thresholds are then checked on the **test** split, which played no part in c
 
 **What the thresholds do not do.** They are validated only for images of the 115 trained classes. A photo of an unsupported disease, a pest, a deficiency or a healthy plant may still get a high probability for some trained class. No out-of-distribution test set exists in this repository, so open-set rejection has **not** been measured.
 
-<!-- RESULTS_PENDING: calibration -->
+**Measured on the validation split** (the split the temperature and thresholds were fitted on):
+
+| | ECE | MCE | NLL | Brier | Mean confidence | Accuracy |
+|---|---|---|---|---|---|---|
+| Raw softmax | 0.103 | 0.227 | 1.442 | 0.538 | 0.713 | 0.616 |
+| Temperature-scaled (T = 1.228) | 0.046 | 0.158 | 1.397 | 0.526 | 0.637 | 0.616 |
+
+The raw model was over-confident (mean confidence 71 % against 62 % accuracy). Temperature scaling more than halved the calibration error.
+
+**Thresholds selected on validation:** `confident ≥ 0.811`, `inconclusive < 0.377`, `plant_mass ≥ 0.656`. Both accuracy targets were met on the validation split: 33.7 % of images were confident with 90.2 % accuracy, 44.3 % uncertain with the true class in the top 3 83.7 % of the time, and 22.0 % inconclusive.
+
+Why 0.377 is the inconclusive line (validation images, by calibrated top-1 confidence):
+
+| Confidence | Images | Top-1 correct | True class in top 3 |
+|---|---|---|---|
+| < 0.20 | 72 | 26 % | 47 % |
+| 0.20 – 0.30 | 126 | 24 % | 54 % |
+| 0.30 – 0.35 | 97 | 36 % | 67 % |
+| 0.35 – 0.40 | 81 | 46 % | 79 % |
+| 0.40 – 0.60 | 318 | 49 % | 80 % |
+| 0.60 – 0.81 | 323 | 62 % | 86 % |
+| ≥ 0.81 | 518 | 90 % | 96 % |
 
 ## 4. Held-out evaluation
 
@@ -63,7 +103,70 @@ The script reloads the exact images of the chosen split from `split_manifest.csv
 
 The report also records the model version, git commit, split fingerprint, leakage check and single-image CPU latency.
 
-<!-- RESULTS_PENDING: evaluation -->
+### Results on the held-out test split
+
+From `artifacts/runs/20261029T210637Z_efficientnet_b0/evaluation_test/report.md` (git `34d321d6c3`, 1,535 images, all 115 classes present, split fingerprint `2ee97bcf13e131c3`). The test split played no part in training, calibration or threshold selection.
+
+**Classification (always answering, no abstention):**
+
+| Metric | Value |
+|---|---|
+| Top-1 accuracy | **0.607** |
+| Top-3 accuracy | 0.822 |
+| Top-5 accuracy | 0.887 |
+| Macro precision / recall / F1 | 0.568 / 0.564 / **0.546** |
+| Weighted F1 | 0.601 |
+| Plant named correctly (any disease) | 0.723 |
+
+**Calibration on test:**
+
+| | ECE | MCE | NLL | Brier |
+|---|---|---|---|---|
+| Raw softmax | 0.093 | 0.174 | 1.490 | 0.543 |
+| Temperature-scaled | **0.046** | 0.076 | 1.445 | 0.533 |
+
+**The validation-selected thresholds applied to test images:**
+
+| Status | Share of test images | Result |
+|---|---|---|
+| Confident | 32.1 % | top-1 accuracy **88.0 %** (target 90 %, met on validation) |
+| Uncertain | 45.0 % | top-1 57.5 %; true class in the top 3 **85.8 %** (target 75 %) |
+| Inconclusive | 22.9 % | nothing named; forcing a top-1 answer would have been right only 28.7 % of the time |
+
+The confident band is 2 points short of its 90 % target on unseen images. That is within what a 1,535-image split can show, but it means "confident" should be read as "about 9 in 10", not as a guarantee. Raising `AGRIGUARD_TARGET_SELECTIVE_ACCURACY` makes the band smaller and more accurate.
+
+**Risk–coverage (test):** answering only the 50 % most confident images gives 81 % accuracy; 70 % gives 72 %; all images give 61 %. AURC 0.191.
+
+**Per class.** 53 of the 115 classes have fewer than 10 test images (16 have fewer than 5), so their per-class numbers are very uncertain. 42 classes have F1 below 0.5, and 8 have F1 = 0 (all with 1–4 test images). The full table is `per_class_metrics.csv`.
+
+**Typical mistakes.** 71 % of wrong answers name a disease on a *different plant*. The most frequent confusions are:
+- wheat stripe rust → wheat bacterial leaf streak (17 images);
+- zucchini powdery mildew → squash powdery mildew (11), and squash ↔ cucumber powdery mildew;
+- wheat septoria blotch → wheat bacterial leaf streak (9);
+- grape downy mildew → grape black rot (5).
+
+Several of these are the same pathogen on closely related crops, which a photo of a single leaf may not separate. Among confident results the plant is right 91.7 % of the time.
+
+**Leakage check:** 0 exact and 0 near-duplicate images shared between train and validation or test (64-bit average hash, Hamming distance ≤ 4).
+
+**Latency** (CPU, 4 threads, batch of 1, classifier only): median 21.5 ms, p95 40.3 ms. A full `POST /api/v1/scans` request through the running API — quality gate, classifier, Grad-CAM, storage and database — took a median of 300 ms over 12 real test photos (906 ms for the first, warm-up request). A photo rejected by the quality gate returned in 28 ms.
+
+### End-to-end check against the running system
+
+`POST /api/v1/scans` was exercised with this model against PostgreSQL 16 (migrations 0001–0003): 12 real test photos, one synthetic dark photo and a second user. All 18 checks passed:
+- calibrated `validation` thresholds in use;
+- inconclusive results name no disease;
+- no affected area reported without segmentation;
+- signed image links work, unsigned ones are refused;
+- PDF report requires login;
+- follow-up answers stored;
+- plant timeline and cautious comparison;
+- dark photo rejected as `too_dark`;
+- dashboard counts no "healthy" results;
+- assistant reports an empty knowledge base instead of answering;
+- another user gets 404 for the plant and the diagnosis.
+
+On those 12 photos, all 4 confident answers were correct.
 
 ## 5. Image-quality gate
 
@@ -103,5 +206,8 @@ Grad-CAM (`ai/explainability/gradcam.py`) is computed for the top class and show
 - **No healthy class.** PlantWild v2 has no healthy-plant images, so the model cannot say a plant is healthy. The dashboard never counts a disease-model result as healthy.
 - **Closed set.** Pests, nutrient deficiencies, water, heat and cold stress, chemical injury and diseases outside the 115 classes cannot be recognised. Open-set rejection was not measured.
 - **Small classes.** Many classes have only a handful of test images, so their per-class metrics have wide uncertainty. The report flags them.
+- **Moderate accuracy.** About 6 in 10 photos get the right top answer overall. The decision statuses exist because of this: only about a third of photos get a confident answer.
+- **Cross-crop confusion.** Most errors name a disease on a different plant, often the same disease on a related crop. The plant name in a non-confident result should be checked by the user.
+- **Arabic disease names.** Plant names are translated, but the 115 disease names are shown in English in the Arabic interface. Translating them reliably needs a reviewed agricultural glossary.
 - **No expert review.** No plant pathologist has reviewed the predictions, the thresholds or the knowledge taxonomy.
 - **Duplicates.** Exact and near-duplicate images (64-bit average hash, Hamming distance ≤ 4) were removed before splitting. Near-duplicates that differ more than that (crops, re-encodes with edits) can remain.

@@ -62,14 +62,14 @@ The classifier is trained on **PlantWild v2: 115 disease classes on 34 plant typ
 
 ### How candidates are produced (`ai/knowledge/differential.py`)
 
-1. **Model candidates:** the calibrated top-k classes, with their unchanged probabilities. They are shown only for `confident` and `uncertain` results; `inconclusive` results show none.
+1. **Model candidates:** the calibrated top-k classes, with their unchanged probabilities. They are shown only for `confident` and `uncertain` results. An `inconclusive` result shows none, and nothing derived from them either: no look-alike list, all eight follow-up questions, and no hints based on the hidden candidates' cause types.
 2. Each candidate gets metadata from `ai/knowledge/taxonomy.py`: cause type, typical affected parts, symptom-pattern tags, and whether the pathogen is regulated in many jurisdictions (citrus greening, citrus canker, plum pox, banana bunchy top, banana Fusarium wilt).
    - **Provenance:** this taxonomy (version `1.0.0-unreviewed`) is general plant-pathology classification compiled for this project. It has **not** been reviewed by an external plant pathologist, and it says so in its version string and in the UI.
 3. **"Also consider (not detectable by the model)":** look-alike non-disease causes, chosen from the leading candidate's symptom pattern (for example, mosaic or yellowing → nutrient deficiency, herbicide injury, mite feeding). These are never ranked against model classes and never given a probability.
 4. **Expert review is recommended** when:
    - the result is not confident;
-   - the top candidates have different cause types;
-   - a regulated pathogen is among the candidates.
+   - candidates with at least 10 % probability have different cause types (a 3 % runner-up does not count);
+   - a regulated pathogen is among the candidates with at least 5 % probability.
 
 ### Follow-up questions
 

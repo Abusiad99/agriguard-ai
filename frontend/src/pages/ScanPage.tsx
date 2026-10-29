@@ -145,7 +145,7 @@ export default function ScanPage() {
     <div className="flex flex-col gap-8 stagger">
       <PageHeader title={t.scan.title} subtitle={t.scan.subtitle} />
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
         <Card className="!p-3 sm:!p-4">
           {stage === "idle" && (
             <div
