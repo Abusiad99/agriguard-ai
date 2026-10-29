@@ -71,11 +71,21 @@ def parse_args():
 
 
 def _git_commit() -> str:
+    """HEAD commit, suffixed "+dirty" when the model or evaluation code has uncommitted
+    changes (so a report never claims to come from code it did not run)."""
+    root = CONFIG.paths.project_root
     try:
-        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=CONFIG.paths.project_root,
+        head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root,
                                        stderr=subprocess.DEVNULL).decode().strip()
     except Exception:  # noqa: BLE001
         return "unknown"
+    try:
+        dirty = subprocess.run(
+            ["git", "diff", "HEAD", "--quiet", "--", "ai", "train.py", "calibrate.py", "evaluate.py", "predict.py"],
+            cwd=root, stderr=subprocess.DEVNULL).returncode != 0
+    except Exception:  # noqa: BLE001
+        dirty = False
+    return head + ("+dirty" if dirty else "")
 
 
 def _topk_accuracy(probs: np.ndarray, labels: np.ndarray, k: int) -> float:
@@ -122,7 +132,7 @@ def _markdown(report: dict) -> str:
     lines = [
         f"# Evaluation report — {report['model']['model_version']}",
         "",
-        f"- Evaluated: {report['evaluated_at']} (git {report['git_commit'][:10]})",
+        f"- Evaluated: {report['evaluated_at']} (git {report['git_commit'][:10]}{'+dirty' if report['git_commit'].endswith('+dirty') else ''})",
         f"- Split: **{report['split']}** — {report['data']['n_images']} images, "
         f"{report['data']['n_classes_present']} classes present "
         f"(fingerprint `{report['data']['split_fingerprint'][:16]}`)",
@@ -176,7 +186,9 @@ def _markdown(report: dict) -> str:
     lines += ["", "## Classes needing attention", "",
               f"- Classes with < {weak['min_support']} test images (metrics unreliable): "
               f"{len(weak['low_support'])}",
-              f"- Classes with F1 < 0.5: {len(weak['low_f1'])}: " + ", ".join(weak["low_f1"][:30]),
+              f"- Classes with F1 < 0.5: {len(weak['low_f1'])}"
+              + (" (first 30 shown; all in per_class_metrics.csv)" if len(weak["low_f1"]) > 30 else "")
+              + ": " + ", ".join(weak["low_f1"][:30]),
               "", "## Leakage check", "", "```", json.dumps(report.get("leakage", {}), indent=2), "```",
               "", "## Latency (single image, batch 1)", "", "```", json.dumps(report["latency"], indent=2), "```",
               "", "## Limitations", ""]

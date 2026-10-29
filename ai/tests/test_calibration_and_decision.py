@@ -10,6 +10,7 @@ from ai.inference.calibration import (
     evaluate_thresholds,
     expected_calibration_error,
     fit_temperature,
+    isotonic_increasing,
     risk_coverage_curve,
     select_thresholds,
     softmax,
@@ -67,6 +68,43 @@ def test_threshold_selection_meets_target_on_selection_split_and_is_reported_on_
     z2, y2 = _synthetic(n=3000, true_t=1.0, seed=2)
     held_out = evaluate_thresholds(softmax(z2, 1.0), y2, sel.confident_threshold, sel.reject_threshold, 3)
     assert held_out["confident_accuracy"] > 0.85  # close to, not guaranteed equal to, the target
+
+
+def test_isotonic_fit_is_monotone_and_pools_violators():
+    fit = isotonic_increasing(np.array([0, 1, 0, 1, 1, 0, 1, 1], dtype=float))
+    assert (np.diff(fit) >= 0).all()
+    assert fit.tolist() == pytest.approx([0, 0.5, 0.5, 2 / 3, 2 / 3, 2 / 3, 1, 1])
+    assert fit.mean() == pytest.approx(5 / 8)  # least-squares fit preserves the mean
+
+
+def _probs_with_conf(conf, k=10):
+    """Rows with top-1 probability exactly `conf`, ranked class 0 > 1 > 2 > the rest."""
+    rows = []
+    for c in conf:
+        p1 = min(0.95 * c, 0.5 * (1 - c))
+        p2 = min(0.9 * c, 0.3 * (1 - c))
+        rest = (1 - c - p1 - p2) / (k - 3)
+        rows.append([c, p1, p2] + [rest] * (k - 3))
+    return np.array(rows)
+
+
+def test_reject_threshold_follows_local_shortlist_reliability_not_band_average():
+    # 100 confident images (always right), 300 mid-confidence images whose top-3
+    # contains the truth, and a 100-image low-confidence tail whose top-3 is wrong
+    # 70 % of the time. The whole band below the confident threshold still averages
+    # 0.825 >= 0.75, which made the old band-average rule mark nothing inconclusive.
+    rng = np.random.default_rng(0)
+    conf = np.concatenate([rng.uniform(0.92, 0.99, 100), rng.uniform(0.45, 0.85, 300), rng.uniform(0.12, 0.3, 100)])
+    p = _probs_with_conf(conf)
+    y = np.zeros(len(conf), dtype=np.int64)
+    y[100:400] = 1                                   # in the top-3 but not top-1
+    tail = np.arange(400, 500)
+    y[tail] = np.where(rng.random(100) < 0.7, 7, 2)  # 70 % outside the top-3
+    sel = select_thresholds(p, y, target_selective_accuracy=0.9, target_candidate_topk_accuracy=0.75, top_k=3)
+    assert sel.reject_method == "isotonic_local_topk"
+    assert 0.3 < sel.reject_threshold <= 0.46  # the lowest mid-group confidence, above the whole tail
+    assert sel.rejected_coverage == pytest.approx(0.2)
+    assert sel.uncertain_topk_accuracy == pytest.approx(1.0)
 
 
 def test_unreachable_target_is_flagged():

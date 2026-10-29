@@ -30,7 +30,9 @@ These problems were found in the code on `main` before this work. Each is fixed 
 **Thresholds** are chosen on the same validation split against two targets in `ai/config.py`:
 
 - `confident_threshold`: the lowest calibrated top-1 probability at which the predictions above it still reach **90 % accuracy** (`AGRIGUARD_TARGET_SELECTIVE_ACCURACY`). This maximises how many images get a confident answer while keeping the error rate among them near the target.
-- `reject_threshold`: below `confident_threshold`, the lowest probability at which the **top-3 candidate list** still contains the true class at least **75 %** of the time (`AGRIGUARD_TARGET_CANDIDATE_TOPK_ACCURACY`). Below it even the shortlist is unreliable, so the result is `inconclusive` and no disease is named.
+- `reject_threshold`: the lowest probability at which the **top-3 candidate list** contains the true class at least **75 %** of the time (`AGRIGUARD_TARGET_CANDIDATE_TOPK_ACCURACY`) *for images at that confidence*. That local rate is estimated with a non-decreasing (isotonic) fit of "true class in top 3" against confidence, so no bin edges have to be chosen. Below the threshold even the shortlist is unreliable, so the result is `inconclusive` and no disease is named.
+  - The first version averaged the whole band below the confident threshold instead. On this model that average was exactly 75 %, so the rule marked **nothing** inconclusive, even though images below a confidence of about 0.35 had the true class in their top 3 only 20–67 % of the time. The local rule fixed this; it is covered by a regression test in `ai/tests/test_calibration_and_decision.py`.
+- `plant_mass_threshold`: the share of probability on the predicted plant's classes above which the *plant* is named correctly at least 90 % of the time. An inconclusive result below this threshold does not name the plant either; an inconclusive result above it names the plant but no disease.
 
 Both thresholds, the temperature, the targets, whether the targets were met, and the split they were chosen on are saved to `calibration.json` in the run directory. The API returns `thresholds.source`:
 

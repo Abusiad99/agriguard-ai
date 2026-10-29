@@ -158,6 +158,25 @@ def summarize_risk_coverage(confidence: np.ndarray, correct: np.ndarray,
     return rows
 
 
+def isotonic_increasing(values: np.ndarray) -> np.ndarray:
+    """Least-squares non-decreasing fit (pool-adjacent-violators) of `values`, which
+    must already be ordered by the variable the fit should increase with. For a 0/1
+    hit indicator ordered by confidence, the result estimates the hit rate at each
+    confidence without choosing bin edges."""
+    values = np.asarray(values, dtype=np.float64)
+    means: List[float] = []
+    sizes: List[int] = []
+    for v in values:
+        means.append(float(v))
+        sizes.append(1)
+        while len(means) > 1 and means[-2] > means[-1]:
+            m2, n2 = means.pop(), sizes.pop()
+            m1, n1 = means.pop(), sizes.pop()
+            means.append((m1 * n1 + m2 * n2) / (n1 + n2))
+            sizes.append(n1 + n2)
+    return np.repeat(np.array(means), np.array(sizes, dtype=np.int64)) if means else values
+
+
 # ---------------------------------------------------------------------------
 # Threshold selection
 # ---------------------------------------------------------------------------
@@ -178,6 +197,9 @@ class ThresholdSelection:
     rejected_coverage: float
     target_met: bool
     notes: List[str] = field(default_factory=list)
+    # "isotonic_local_topk" (current) or "band_average" (calibration files written
+    # before the local rule was introduced).
+    reject_method: str = "band_average"
 
 
 def select_thresholds(probs: np.ndarray, labels: np.ndarray, *,
@@ -193,11 +215,14 @@ def select_thresholds(probs: np.ndarray, labels: np.ndarray, *,
         any threshold, the threshold with the best achievable selective accuracy
         among those covering >= 5% of samples is used and `target_met=False`.
 
-    reject_threshold: the LOWEST threshold r (< confident_threshold) such that
-        samples in the "uncertain" band [r, confident_threshold) still contain the
-        true class among their top-k candidates at a rate >= the top-k target. Below
-        r even the candidate shortlist is unreliable on validation data, so the
-        system reports "inconclusive" instead of naming candidates.
+    reject_threshold: the LOWEST confidence r (<= confident_threshold) at which the
+        LOCAL rate of "true class among the top-k candidates" reaches the top-k
+        target. The local rate is a monotone (isotonic) fit of the top-k hit
+        indicator against confidence, so it describes images AT a given confidence
+        rather than the average of the whole band. (Averaging the band let the many
+        good images just below the confident threshold hide a low-confidence tail
+        whose shortlist was usually wrong.) Below r the shortlist is unreliable on
+        validation data, so the system reports "inconclusive" and names nothing.
 
     Note: these thresholds are validated only for IN-DISTRIBUTION images (the
     classes the model was trained on). They do not establish that out-of-
@@ -237,20 +262,16 @@ def select_thresholds(probs: np.ndarray, labels: np.ndarray, *,
             f"{selection_split} split; using the best achievable threshold.")
 
     # --- reject threshold ---
-    below = conf < confident_t
     reject_t = confident_t
-    if below.any():
-        b_conf = conf[below]
-        b_topk = in_topk[below].astype(np.float64)
-        b_order = np.argsort(-b_conf, kind="stable")
-        b_conf_sorted = b_conf[b_order]
-        b_cum = np.cumsum(b_topk[b_order]) / np.arange(1, len(b_order) + 1)
-        ok = np.where(b_cum >= target_candidate_topk_accuracy)[0]
+    if (conf < confident_t).any():
+        asc = np.argsort(conf, kind="stable")
+        local = isotonic_increasing(in_topk[asc].astype(np.float64))
+        ok = np.where((local >= target_candidate_topk_accuracy) & (conf[asc] < confident_t))[0]
         if len(ok) > 0:
-            reject_t = float(b_conf_sorted[int(ok.max())])
+            reject_t = float(conf[asc][int(ok.min())])
         else:
-            notes.append("No uncertain band reaches the candidate top-k target; every "
-                         "prediction below the confident threshold will be reported as inconclusive.")
+            notes.append("The candidate shortlist never reaches the top-k target below the confident "
+                         "threshold; every prediction below it will be reported as inconclusive.")
 
     confident_mask = conf >= confident_t
     uncertain_mask = (conf >= reject_t) & ~confident_mask
@@ -270,6 +291,7 @@ def select_thresholds(probs: np.ndarray, labels: np.ndarray, *,
         rejected_coverage=float(rejected_mask.mean()),
         target_met=target_met,
         notes=notes,
+        reject_method="isotonic_local_topk",
     )
 
 
