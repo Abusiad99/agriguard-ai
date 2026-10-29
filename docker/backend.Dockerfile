@@ -53,6 +53,7 @@ WORKDIR /app
 # artifacts are mounted as a volume at runtime (see docker-compose.yml).
 COPY ai/ /app/ai/
 COPY backend/app /app/app
+COPY backend/scripts /app/scripts
 COPY backend/alembic.ini /app/alembic.ini
 COPY database/01-schema.sql /app/database/01-schema.sql
 

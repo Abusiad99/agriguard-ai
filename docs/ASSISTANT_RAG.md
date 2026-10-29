@@ -56,6 +56,8 @@ python scripts/ingest_knowledge.py --sync-knowledge-base
 python scripts/ingest_knowledge.py --list
 ```
 
+With Docker, mount the manifest and its files into the backend container and run the same script there, for example `docker compose exec backend python /app/scripts/ingest_knowledge.py --manifest /app/knowledge/manifest.json`.
+
 **Ingestion steps:**
 1. Extract the text.
 2. Unicode NFKC normalisation; strip control and bidi-override characters (these can hide text from reviewers).

@@ -49,7 +49,7 @@ All of these are owner-scoped; a foreign id returns 404.
 
 ### What the model can and cannot recognise
 
-The classifier is trained on **PlantWild v2: 115 disease classes on 33 crops**.
+The classifier is trained on **PlantWild v2: 115 disease classes on 34 plant types** (33 crops plus maple).
 - The curated taxonomy groups the classes by cause: fungal 76, bacterial 14, viral 12, oomycete 12, physiological 1 (pepper blossom-end rot).
 - There are **no classes for:**
   - healthy plants;
