@@ -124,7 +124,9 @@ class Settings(BaseSettings):
     # gemini_api_key empty disables the feature entirely; every other part of the
     # diagnosis pipeline is unaffected either way. ---
     gemini_api_key: str = Field(default="", description="Server-side only. Never exposed to the frontend.")
-    gemini_model: str = Field(default="gemini-2.5-flash")
+    # Same default as .env.example and docker-compose.yml. gemini-2.5-flash is deprecated
+    # (no longer offered to new API users), so it is not the default any more.
+    gemini_model: str = Field(default="gemini-3.6-flash")
     gemini_timeout_seconds: float = 20.0
     gemini_max_tool_calls: int = 6  # cap on automatic function-calling round-trips per analysis
 

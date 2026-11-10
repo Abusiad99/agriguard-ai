@@ -215,7 +215,7 @@ modified. See migration `0002_add_ai_analysis.py`. A disabled Gemini feature
 ```bash
 # .env — leave GEMINI_API_KEY empty to disable the feature entirely
 GEMINI_API_KEY=                  # get one at https://aistudio.google.com/apikey — never commit a real key
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.6-flash   # current stable model; see https://aistudio.google.com/docs/models
 GEMINI_TIMEOUT_SECONDS=20.0
 GEMINI_MAX_TOOL_CALLS=6
 ```
@@ -227,11 +227,14 @@ the `google-genai` SDK populates with the request's auth header).
 
 ## 9. Running the system
 
-No change to how the system is run. `docker compose up` (or the manual
-uvicorn/Postgres setup already documented in the main README) works
+No change to how the system is run: the native setup in
+[SETUP_AND_RUN.md](SETUP_AND_RUN.md) (or the optional `docker compose up`) works
 identically whether or not `GEMINI_API_KEY` is set — with it unset, every
 diagnosis behaves exactly as it did before this integration existed, just
 without the "AI Agricultural Analysis" section appearing on the results page.
+After adding or changing the key, restart the backend and run
+`scripts\check-gemini.ps1`, which checks the key and model with one model lookup
+and never prints the key (SETUP_AND_RUN.md, section 7.1).
 
 ## 10. Live validation status
 

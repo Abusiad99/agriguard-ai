@@ -24,7 +24,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install-frontend.ps1    # npm c
 ## 3. Database
 
 ```powershell
-psql -U postgres -c "CREATE ROLE agriguard LOGIN PASSWORD 'agriguard';"     # once
+psql -U postgres -c "CREATE ROLE agriguard LOGIN PASSWORD 'YOUR_DB_PASSWORD';"     # once
 psql -U postgres -c "CREATE DATABASE agriguard OWNER agriguard;"           # once
 powershell -ExecutionPolicy Bypass -File scripts\check-db.ps1
 powershell -ExecutionPolicy Bypass -File scripts\migrate.ps1               # upgrades to head (0008)
@@ -99,7 +99,7 @@ to prepare data, and the feature pages for training commands.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\test.ps1
-powershell -ExecutionPolicy Bypass -File scripts\test.ps1 -PostgresUrl postgresql+psycopg2://agriguard:agriguard@127.0.0.1:5432/agriguard_test
+powershell -ExecutionPolicy Bypass -File scripts\test.ps1 -PostgresUrl postgresql+psycopg2://agriguard:YOUR_DB_PASSWORD@127.0.0.1:5432/agriguard_test
 cd frontend; npm test   # Vitest unit tests
 ```
 

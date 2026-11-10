@@ -66,7 +66,7 @@ if (-not (Test-Path $envFile)) {
     $content = [System.IO.File]::ReadAllText((Join-Path $RepoRoot ".env.example"), [System.Text.Encoding]::UTF8)
     $content = $content -replace "(?m)^JWT_SECRET_KEY=.*$", "JWT_SECRET_KEY=$secret"
     [System.IO.File]::WriteAllText($envFile, $content, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Ok "Created .env (edit DATABASE_URL if your PostgreSQL credentials differ)"
+    Write-Ok "Created .env - now replace YOUR_DB_PASSWORD in DATABASE_URL with your PostgreSQL password"
 } else {
     Write-Ok ".env already exists (left unchanged)"
 }

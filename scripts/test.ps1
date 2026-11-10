@@ -7,7 +7,7 @@
   Also run the database-backed tests and the migration tests against a real
   PostgreSQL database. The database name must end in "_test": every table in it is
   dropped and recreated. Example:
-    -PostgresUrl postgresql+psycopg2://agriguard:agriguard@127.0.0.1:5432/agriguard_test
+    -PostgresUrl postgresql+psycopg2://agriguard:YOUR_DB_PASSWORD@127.0.0.1:5432/agriguard_test
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\test.ps1

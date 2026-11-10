@@ -19,7 +19,7 @@ if ($code -ne 0) {
     Write-Host "  - the PostgreSQL service is running (services.msc, or: pg_ctl status -D <data dir>)"
     Write-Host "  - DATABASE_URL in .env has the right host, port, user, password and database"
     Write-Host "  - the role and database exist, e.g. as the postgres superuser:"
-    Write-Host "      psql -U postgres -c ""CREATE ROLE agriguard LOGIN PASSWORD 'agriguard';"""
+    Write-Host "      psql -U postgres -c ""CREATE ROLE agriguard LOGIN PASSWORD 'YOUR_DB_PASSWORD';"""
     Write-Host "      psql -U postgres -c ""CREATE DATABASE agriguard OWNER agriguard;"""
     exit 1
 }

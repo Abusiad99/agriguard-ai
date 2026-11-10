@@ -111,6 +111,23 @@ function Remove-ProcessRecord([string]$Name) {
     Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $RunDir "$Name.json")
 }
 
+# Stop a dev server started by start-backend.ps1 / start-frontend.ps1, with its child
+# processes (Uvicorn's reloader, Vite under npm). Only the process recorded in .run\
+# is stopped, and only while its id still belongs to it - never by name.
+# Returns: not-started | already-stopped | stopped | failed
+function Stop-DevProcess([string]$Name) {
+    if ($null -eq (Get-ProcessRecord $Name)) { return "not-started" }
+    $process = Get-RecordedProcess $Name
+    if ($null -eq $process) {
+        Remove-ProcessRecord $Name
+        return "already-stopped"
+    }
+    & taskkill.exe /PID $process.Id /T /F | Out-Null
+    if ($LASTEXITCODE -ne 0 -and (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)) { return "failed" }
+    Remove-ProcessRecord $Name
+    return "stopped"
+}
+
 # Split an -Extra "..." string into arguments. Double quotes group words, so paths with
 # spaces work: -Extra '--config "C:\My Data\seg.json" --epochs 30'.
 function Split-ExtraArgs([string]$Extra) {

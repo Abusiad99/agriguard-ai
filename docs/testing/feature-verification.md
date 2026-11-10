@@ -8,7 +8,7 @@ quality on real data, and they are not evidence of production readiness.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\test.ps1                      # SQLite + frontend lint/typecheck/test/build
-powershell -ExecutionPolicy Bypass -File scripts\test.ps1 -PostgresUrl postgresql+psycopg2://agriguard:agriguard@127.0.0.1:5432/agriguard_test
+powershell -ExecutionPolicy Bypass -File scripts\test.ps1 -PostgresUrl postgresql+psycopg2://agriguard:YOUR_DB_PASSWORD@127.0.0.1:5432/agriguard_test
 ```
 
 | File | Covers |
@@ -45,7 +45,7 @@ Use a throwaway database and temporary model folders. Never use your real `artif
 
 ```powershell
 psql -U postgres -c "CREATE DATABASE agriguard_e2e OWNER agriguard;"
-$env:DATABASE_URL = "postgresql+psycopg2://agriguard:agriguard@127.0.0.1:5432/agriguard_e2e"
+$env:DATABASE_URL = "postgresql+psycopg2://agriguard:YOUR_DB_PASSWORD@127.0.0.1:5432/agriguard_e2e"
 $env:AGRIGUARD_ARTIFACTS_DIR = "$env:TEMP\agriguard-e2e\artifacts"
 $env:AGRIGUARD_DATASETS_DIR  = "$env:TEMP\agriguard-e2e\datasets"
 $env:LOCAL_STORAGE_DIR       = "$env:TEMP\agriguard-e2e\storage"
