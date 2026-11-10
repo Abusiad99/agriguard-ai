@@ -1,0 +1,128 @@
+{
+  "file": "observations.csv",
+  "description": "Field inspections: one row per crop/disease check at a place and date. Rows with is_positive=0 are real negative inspections \u2014 do not fabricate negatives for places nobody inspected.",
+  "columns": [
+    {
+      "name": "observed_on",
+      "type": "date",
+      "required": true,
+      "description": "Inspection date (YYYY-MM-DD)",
+      "unit": null,
+      "minimum": null,
+      "maximum": null,
+      "allowed": null,
+      "missing": "row rejected"
+    },
+    {
+      "name": "latitude",
+      "type": "float",
+      "required": true,
+      "description": "WGS84 latitude of the field (aggregated to a grid cell; never shown)",
+      "unit": "degrees",
+      "minimum": -90,
+      "maximum": 90,
+      "allowed": null,
+      "missing": "row rejected"
+    },
+    {
+      "name": "longitude",
+      "type": "float",
+      "required": true,
+      "description": "WGS84 longitude of the field",
+      "unit": "degrees",
+      "minimum": -180,
+      "maximum": 180,
+      "allowed": null,
+      "missing": "row rejected"
+    },
+    {
+      "name": "crop",
+      "type": "string",
+      "required": true,
+      "description": "Crop, using AgriGuard plant names (e.g. tomato, potato, date_palm)",
+      "unit": null,
+      "minimum": null,
+      "maximum": null,
+      "allowed": null,
+      "missing": "row rejected"
+    },
+    {
+      "name": "disease",
+      "type": "string",
+      "required": true,
+      "description": "Disease checked for, using AgriGuard condition names (e.g. late_blight)",
+      "unit": null,
+      "minimum": null,
+      "maximum": null,
+      "allowed": null,
+      "missing": "row rejected"
+    },
+    {
+      "name": "is_positive",
+      "type": "bool01",
+      "required": true,
+      "description": "1 if the disease was found, 0 if inspected and not found",
+      "unit": null,
+      "minimum": null,
+      "maximum": null,
+      "allowed": null,
+      "missing": "row rejected"
+    },
+    {
+      "name": "inspected_count",
+      "type": "int",
+      "required": false,
+      "description": "Plants/fields inspected in this record",
+      "unit": null,
+      "minimum": 1,
+      "maximum": null,
+      "allowed": null,
+      "missing": "treated as 1"
+    },
+    {
+      "name": "positive_count",
+      "type": "int",
+      "required": false,
+      "description": "How many of them were affected",
+      "unit": null,
+      "minimum": 0,
+      "maximum": null,
+      "allowed": null,
+      "missing": "1 if is_positive else 0"
+    },
+    {
+      "name": "observation_id",
+      "type": "string",
+      "required": false,
+      "description": "Your identifier (used to report duplicates)",
+      "unit": null,
+      "minimum": null,
+      "maximum": null,
+      "allowed": null,
+      "missing": "ignored"
+    },
+    {
+      "name": "source",
+      "type": "string",
+      "required": false,
+      "description": "Organisation / survey the record comes from",
+      "unit": null,
+      "minimum": null,
+      "maximum": null,
+      "allowed": null,
+      "missing": "ignored"
+    },
+    {
+      "name": "location_precision_m",
+      "type": "float",
+      "required": false,
+      "description": "Uncertainty of the coordinates",
+      "unit": "meters",
+      "minimum": 0,
+      "maximum": null,
+      "allowed": null,
+      "missing": "ignored"
+    }
+  ],
+  "required": true
+}

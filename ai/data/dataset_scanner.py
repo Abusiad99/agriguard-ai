@@ -21,6 +21,10 @@ from ai.data.adapters.base_adapter import RawSample
 logger = logging.getLogger("agriguard.data.scanner")
 
 
+# datasets/ sub-folders owned by other pipelines (disease localization, outbreak risk,
+# recovery calibration) — never scanned as classification data.
+NON_CLASSIFICATION_DIRS = frozenset({"segmentation", "outbreak", "recovery"})
+
 @dataclass
 class DatasetAuditEntry:
     dataset_name: str
@@ -62,12 +66,14 @@ class DatasetScanner:
         self.registry = registry or AdapterRegistry()
 
     def discover_dataset_roots(self) -> List[Path]:
-        """Every immediate subdirectory of datasets/ is a candidate dataset family."""
+        """Every immediate subdirectory of datasets/ is a candidate dataset family,
+        except the folders reserved for the other AI pipelines (their images are
+        segmentation / longitudinal data, not classification classes)."""
         if not self.datasets_dir.exists():
             return []
         return sorted(
             p for p in self.datasets_dir.iterdir()
-            if p.is_dir() and not p.name.startswith(".")
+            if p.is_dir() and not p.name.startswith(".") and p.name not in NON_CLASSIFICATION_DIRS
         )
 
     def audit(self) -> DatasetAudit:

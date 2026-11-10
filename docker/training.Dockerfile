@@ -21,6 +21,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r ai-requirements.txt
 
 COPY ai/ /app/ai/
+# Pipeline settings for segmentation / outbreak / recovery (ai/*/config.py read /app/configs).
+COPY configs/ /app/configs/
 COPY train.py evaluate.py predict.py inference.py /app/
 
 # datasets/ and artifacts/ are bind-mounted at runtime (see docker-compose.yml

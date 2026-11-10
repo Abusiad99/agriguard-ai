@@ -2,11 +2,11 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import en from "@/i18n/en";
 import ar from "@/i18n/ar";
 import type { TranslationDict } from "@/i18n/en";
+import { textDirection } from "@/i18n/direction";
 
 export type Locale = "en" | "ar";
 
 const DICTIONARIES: Record<Locale, TranslationDict> = { en, ar };
-const RTL_LOCALES: Locale[] = ["ar"];
 const STORAGE_KEY = "agriguard_locale";
 
 interface LocaleContextValue {
@@ -27,7 +27,7 @@ function detectInitialLocale(): Locale {
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(detectInitialLocale);
 
-  const dir = RTL_LOCALES.includes(locale) ? "rtl" : "ltr";
+  const dir = textDirection(locale);
 
   useEffect(() => {
     document.documentElement.lang = locale;

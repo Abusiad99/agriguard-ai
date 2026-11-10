@@ -1,10 +1,13 @@
 import { useState } from "react";
-import type { AiAnalysisSchema, AnalysisUrgency, CvConsistency, RecommendationSchema, SeverityLevel, TreatmentSchema, WeatherSchema } from "@/types/api";
+import type {
+  AiAnalysisSchema, AnalysisUrgency, CvConsistency, DiseaseSchema, SeverityLevel, TreatmentSchema, WeatherSchema,
+} from "@/types/api";
 import { Badge, severityTone } from "@/components/ui/Badge";
 import { Alert } from "@/components/ui/Alert";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Tabs } from "@/components/ui/Tabs";
 import { useLocale } from "@/context/LocaleContext";
+import { diseaseDescription, treatmentInstructions } from "@/lib/diagnosisText";
 import { SEVERITY_COLOR, useSeverityLabel } from "./severity";
 
 export function SeverityBadge({ level }: { level?: SeverityLevel | null }) {
@@ -59,7 +62,9 @@ export function AffectedAreaBar({
 
 export function WeatherCard({ weather }: { weather?: WeatherSchema | null }) {
   const { t } = useLocale();
-  if (!weather || weather.temperature_c == null) {
+  // Fallback for responses without weather_guidance. Unavailable only when nothing was recorded.
+  if (!weather || [weather.temperature_c, weather.humidity_pct, weather.wind_speed_kmh, weather.rain_probability_pct,
+                   weather.uv_index].every((v) => v == null)) {
     return (
       <p className="flex items-center gap-2 text-sm text-muted">
         <Icon name="info" className="h-4 w-4" />
@@ -92,40 +97,25 @@ export function WeatherCard({ weather }: { weather?: WeatherSchema | null }) {
   );
 }
 
-export function RecommendationList({ recommendation }: { recommendation?: RecommendationSchema | null }) {
-  const { t } = useLocale();
-  if (!recommendation) return null;
-  const all: { icon: IconName; label: string; value?: string | null }[] = [
-    { icon: "droplet", label: t.result.irrigation, value: recommendation.irrigation_advice },
-    { icon: "spray", label: t.result.spraying, value: recommendation.spraying_advice },
-    { icon: "sprout", label: t.result.fertilizer, value: recommendation.fertilizer_advice },
-  ];
-  const items = all.filter((i) => i.value);
-
-  if (items.length === 0) return null;
-
-  return (
-    <ul className="flex flex-col gap-3">
-      {items.map((item) => (
-        <li key={item.label} className="flex gap-3.5 rounded-2xl border border-line/80 bg-surface/50 p-4 dark:bg-surface/30">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <Icon name={item.icon} className="h-5 w-5" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-ink">{item.label}</p>
-            <p dir="auto" className="mt-0.5 text-start text-sm leading-relaxed text-muted">{item.value}</p>
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 const TREATMENT_ICON: Record<string, IconName> = {
   organic: "leaf",
   chemical: "beaker",
   biological: "microbe",
 };
+
+/**
+ * The disease description from the knowledge base, or, when the predicted condition has no
+ * entry yet, the notice in the reader's language. A missing entry says nothing about whether
+ * the condition is real; it only means AgriGuard has no verified information for it.
+ */
+export function DiseaseDescription({ disease }: { disease: DiseaseSchema }) {
+  const { t } = useLocale();
+  return (
+    <p dir="auto" data-kb-status={disease.knowledge_base_status ?? "listed"} className="text-start text-[0.98rem] leading-relaxed text-ink">
+      {diseaseDescription(disease, t)}
+    </p>
+  );
+}
 
 export function TreatmentSection({ treatment }: { treatment?: TreatmentSchema | null }) {
   const { t } = useLocale();
@@ -155,7 +145,9 @@ export function TreatmentSection({ treatment }: { treatment?: TreatmentSchema | 
           <Icon name={TREATMENT_ICON[current.key]} className="h-5 w-5 text-primary" />
           {current.label}
         </p>
-        <p dir="auto" className="mt-2.5 text-start text-[0.95rem] leading-relaxed text-ink">{current.data?.instructions}</p>
+        <p dir="auto" className="mt-2.5 text-start text-[0.95rem] leading-relaxed text-ink">
+          {current.data ? treatmentInstructions(current.data, t) : null}
+        </p>
         {current.data?.safety_notes && (
           <p className="mt-4 flex items-start gap-2.5 rounded-xl bg-severity-mild-bg/70 px-3.5 py-3 text-sm text-severity-mild">
             <Icon name="warning" className="mt-px h-[18px] w-[18px] shrink-0" />
@@ -289,7 +281,9 @@ export function AiAnalysisSection({ aiAnalysis }: { aiAnalysis?: AiAnalysisSchem
         </div>
       )}
 
-      <InsightBlock icon="rain" title={t.result.aiEnvironmentalRisk} body={a.environmental_risk} />
+      {a.environmental_risk && <InsightBlock icon="rain" title={t.result.aiEnvironmentalRisk} body={a.environmental_risk} />}
+
+      {aiAnalysis.weather_advice_removed && <Alert tone="info">{t.result.aiWeatherAdviceRemoved}</Alert>}
     </div>
   );
 }

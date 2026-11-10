@@ -10,7 +10,11 @@ module.exports = {
   parser: "@typescript-eslint/parser",
   plugins: ["react-refresh"],
   rules: {
-    "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+    // Context hooks and the badge tone helper live next to their provider/component.
+    "react-refresh/only-export-components": [
+      "warn",
+      { allowConstantExport: true, allowExportNames: ["useAuth", "useLocale", "useTheme", "severityTone"] },
+    ],
     "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
   },
 };

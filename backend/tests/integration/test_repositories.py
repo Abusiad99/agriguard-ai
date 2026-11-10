@@ -140,6 +140,28 @@ class TestDiagnosisRepository:
         assert summary["healthy_count"] == 1
         assert summary["diseased_count"] == 0
 
+    def test_dashboard_counts_predicted_disease_missing_from_kb_as_diseased(self, db_session):
+        user_repo = SqlAlchemyUserRepository(db_session)
+        plant_repo = SqlAlchemyPlantRepository(db_session)
+        diagnosis_repo = SqlAlchemyDiagnosisRepository(db_session)
+
+        user = user_repo.create(User(id=None, email="dash2@t.com", password_hash="h",
+                                       full_name="Dash", role=UserRole.FARMER))
+        plant = plant_repo.get_or_create("tomato")
+
+        for ref, condition in (("scans/a.jpg", "late_blight"), ("scans/b.jpg", "healthy")):
+            saved = diagnosis_repo.create(Diagnosis(
+                id=None, user_id=user.id, plant_id=plant.id, disease_id=None,
+                confidence_score=95.0, severity_level=None, affected_area_pct=None,
+                healthy_area_pct=None, original_image_ref=ref, predicted_condition=condition,
+            ))
+            assert diagnosis_repo.get_by_id(saved.id).predicted_condition == condition
+
+        summary = diagnosis_repo.dashboard_summary(user_id=user.id)
+        assert summary["total_scans"] == 2
+        assert summary["healthy_count"] == 1
+        assert summary["diseased_count"] == 1
+
     def test_attach_report_links_report_to_diagnosis(self, db_session):
         user_repo = SqlAlchemyUserRepository(db_session)
         diagnosis_repo = SqlAlchemyDiagnosisRepository(db_session)

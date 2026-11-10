@@ -6,14 +6,23 @@ production performance optimization referenced in NFR-PERF-3 for large accounts,
 this repository can be extended to read from it directly once query volume warrants."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, time, timedelta, timezone
 from typing import List, Optional, Tuple
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, not_, or_, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.domain.entities.diagnosis import AiAnalysis, Diagnosis, PestDetection, Recommendation, Report, SeverityLevel, WeatherSnapshot
+from app.domain.entities.diagnosis import (
+    HEALTHY_CONDITION,
+    AiAnalysis,
+    Diagnosis,
+    PestDetection,
+    Recommendation,
+    Report,
+    SeverityLevel,
+    WeatherSnapshot,
+)
 from app.domain.repositories.interfaces import IDiagnosisRepository
 from app.infrastructure.db.models.diagnosis_model import (
     AiAnalysisModel,
@@ -35,7 +44,8 @@ def _to_entity(m: DiagnosisModel) -> Diagnosis:
         healthy_area_pct=float(m.healthy_area_pct) if m.healthy_area_pct is not None else None,
         original_image_ref=m.original_image_ref, roi_image_ref=m.roi_image_ref,
         heatmap_image_ref=m.heatmap_image_ref, low_confidence_flag=m.low_confidence_flag,
-        unrecognized_plant=m.unrecognized_plant,
+        unrecognized_plant=m.unrecognized_plant, predicted_condition=m.predicted_condition,
+        image_quality=m.image_quality_json, top_predictions=m.top_predictions_json,
         location_lat=float(m.location_lat) if m.location_lat is not None else None,
         location_lon=float(m.location_lon) if m.location_lon is not None else None,
         supersedes_diagnosis_id=m.supersedes_diagnosis_id, diagnosed_at=m.diagnosed_at,
@@ -99,7 +109,9 @@ class SqlAlchemyDiagnosisRepository(IDiagnosisRepository):
             affected_area_pct=diagnosis.affected_area_pct, healthy_area_pct=diagnosis.healthy_area_pct,
             original_image_ref=diagnosis.original_image_ref, roi_image_ref=diagnosis.roi_image_ref,
             heatmap_image_ref=diagnosis.heatmap_image_ref, low_confidence_flag=diagnosis.low_confidence_flag,
-            unrecognized_plant=diagnosis.unrecognized_plant, location_lat=diagnosis.location_lat,
+            unrecognized_plant=diagnosis.unrecognized_plant, predicted_condition=diagnosis.predicted_condition,
+            image_quality_json=diagnosis.image_quality, top_predictions_json=diagnosis.top_predictions,
+            location_lat=diagnosis.location_lat,
             location_lon=diagnosis.location_lon, supersedes_diagnosis_id=diagnosis.supersedes_diagnosis_id,
         )
         self.db.add(model)
@@ -167,10 +179,15 @@ class SqlAlchemyDiagnosisRepository(IDiagnosisRepository):
             stmt = stmt.join(DiseaseModel, DiagnosisModel.disease_id == DiseaseModel.id).where(
                 DiseaseModel.name.ilike(f"%{disease}%")
             )
+        # Dates are UTC calendar days. Explicit UTC bounds keep the filter independent of
+        # the database server's time zone (a bare date would be read in the session zone).
         if date_from:
-            stmt = stmt.where(DiagnosisModel.diagnosed_at >= date_from)
+            stmt = stmt.where(DiagnosisModel.diagnosed_at >= datetime.combine(date_from, time.min, tzinfo=timezone.utc))
         if date_to:
-            stmt = stmt.where(DiagnosisModel.diagnosed_at <= date_to)
+            # date_to is inclusive: compare against the start of the next day, since a
+            # bare date means midnight and would drop every scan made on date_to itself.
+            stmt = stmt.where(DiagnosisModel.diagnosed_at
+                              < datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=timezone.utc))
 
         total = self.db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
         stmt = stmt.order_by(DiagnosisModel.diagnosed_at.desc()).offset((page - 1) * page_size).limit(page_size)
@@ -184,10 +201,23 @@ class SqlAlchemyDiagnosisRepository(IDiagnosisRepository):
 
         total_scans = self.db.execute(select(func.count()).select_from(base.subquery())).scalar_one()
 
-        healthy_stmt = base.where(DiagnosisModel.disease_id.is_(None), DiagnosisModel.unrecognized_plant == False)  # noqa: E712
+        # Mirrors Diagnosis.is_healthy(): a NULL disease_id only means "healthy" when the
+        # CV model predicted the healthy condition (or for rows saved before
+        # predicted_condition existed) — otherwise the KB just lacks that disease.
+        predicted_healthy = or_(
+            DiagnosisModel.predicted_condition.is_(None),
+            DiagnosisModel.predicted_condition == HEALTHY_CONDITION,
+        )
+        healthy_stmt = base.where(
+            DiagnosisModel.disease_id.is_(None), DiagnosisModel.unrecognized_plant == False,  # noqa: E712
+            predicted_healthy,
+        )
         healthy_count = self.db.execute(select(func.count()).select_from(healthy_stmt.subquery())).scalar_one()
 
-        diseased_stmt = base.where(DiagnosisModel.disease_id.isnot(None))
+        diseased_stmt = base.where(
+            DiagnosisModel.unrecognized_plant == False,  # noqa: E712
+            or_(DiagnosisModel.disease_id.isnot(None), not_(predicted_healthy)),
+        )
         diseased_count = self.db.execute(select(func.count()).select_from(diseased_stmt.subquery())).scalar_one()
 
         palm_stmt = (

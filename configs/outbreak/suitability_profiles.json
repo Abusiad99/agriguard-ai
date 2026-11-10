@@ -1,0 +1,15 @@
+{
+  "_comment": "Published, rule-based weather suitability criteria shown next to (never instead of) model risk. Each profile MUST cite its source; add diseases only with a verified reference. crop/disease use AgriGuard canonical names.",
+  "profiles": [
+    {
+      "id": "hutton_criteria_potato_late_blight",
+      "crop": "potato",
+      "disease": "late_blight",
+      "rule": "hutton_criteria",
+      "reference_id": "ref-hutton",
+      "parameters": {"min_temperature_c": 10, "min_rh90_hours": 6, "consecutive_days": 2},
+      "source": "Hutton Criteria for potato late blight (Phytophthora infestans), AHDB Potatoes / James Hutton Institute (Dancey, Skelsey & Cooke, 2017), which replaced the Smith Period in Great Britain.",
+      "description": "Two consecutive days, each with a minimum temperature of at least 10 °C and at least 6 hours of relative humidity at or above 90 %."
+    }
+  ]
+}

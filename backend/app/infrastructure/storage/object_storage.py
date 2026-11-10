@@ -41,7 +41,7 @@ class LocalObjectStorage(IObjectStorage):
 
     def _full_path(self, relative_path: str) -> Path:
         full = (self.base_dir / relative_path).resolve()
-        if not str(full).startswith(str(self.base_dir.resolve())):
+        if not full.is_relative_to(self.base_dir.resolve()):  # also rejects sibling dirs like storage2/
             raise ValueError("Path traversal detected in storage reference.")
         return full
 

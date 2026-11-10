@@ -35,7 +35,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     """Sliding-window limiter keyed by (client_ip, route_group)."""
 
     _AUTH_PATHS = ("/api/v1/auth/login", "/api/v1/auth/register")
-    _SCAN_PATHS = ("/api/v1/scans",)
+    _SCAN_PATHS = ("/api/v1/scans",)  # follow-up scans of tracked plants use this path too
+    _PREDICTION_PATHS = ("/api/v1/outbreak/predictions",)
 
     def __init__(self, app):
         super().__init__(app)
@@ -46,9 +47,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return settings.rate_limit_auth_per_5min, 300
         if path in self._SCAN_PATHS:
             return settings.rate_limit_scan_per_hour, 3600
+        if path in self._PREDICTION_PATHS:
+            return settings.rate_limit_prediction_per_hour, 3600
         return settings.rate_limit_default_per_5min, 300
 
     async def dispatch(self, request: Request, call_next):
+        # Behind nginx this is only the real visitor IP if uvicorn trusts the proxy's
+        # X-Forwarded-For (FORWARDED_ALLOW_IPS, set in docker-compose.yml); otherwise
+        # every request shares nginx's IP and one bucket.
         client_ip = request.client.host if request.client else "unknown"
         limit, window_seconds = self._limit_for(request.url.path)
         key = f"{client_ip}:{request.url.path}"

@@ -9,7 +9,8 @@ from __future__ import annotations
 import abc
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -22,11 +23,13 @@ settings = get_settings()
 
 @dataclass
 class WeatherConditions:
-    temperature_c: float
-    humidity_pct: float
-    wind_speed_kmh: float
-    rain_probability_pct: float
-    uv_index: float
+    # None = the provider didn't report it. Never substitute 0 or a "normal" value:
+    # downstream advice (e.g. "favorable for spraying") must not rest on invented data.
+    temperature_c: Optional[float]
+    humidity_pct: Optional[float]
+    wind_speed_kmh: Optional[float]
+    rain_probability_pct: Optional[float]
+    uv_index: Optional[float]
     retrieved_at: datetime
 
 
@@ -53,8 +56,8 @@ class OpenMeteoWeatherClient(IWeatherClient):
                 temperature_c=current.get("temperature_2m"),
                 humidity_pct=current.get("relative_humidity_2m"),
                 wind_speed_kmh=current.get("wind_speed_10m"),
-                rain_probability_pct=current.get("precipitation_probability", 0.0) or 0.0,
-                uv_index=current.get("uv_index", 0.0) or 0.0,
+                rain_probability_pct=current.get("precipitation_probability"),
+                uv_index=current.get("uv_index"),
                 retrieved_at=datetime.now(timezone.utc),
             )
         except (httpx.HTTPError, httpx.TimeoutException, KeyError, ValueError) as exc:
@@ -98,3 +101,101 @@ class WeatherService:
 
     def _write_cache(self, key: str, conditions: WeatherConditions) -> None:
         self._local_cache[key] = (conditions, datetime.now(timezone.utc))
+
+
+# ---------------------------------------------------------------------------
+# Daily weather (history + forecast) for outbreak risk features.
+# ---------------------------------------------------------------------------
+MIN_HOURS_FOR_DAILY_VALUE = 20  # a daily aggregate needs >= 20 of 24 hourly values, else it stays None
+
+
+@dataclass
+class DailyWeatherRecord:
+    day: date
+    kind: str  # "observed" (day < today at the location) | "forecast"
+    source: str
+    temperature_mean_c: Optional[float] = None
+    temperature_min_c: Optional[float] = None
+    temperature_max_c: Optional[float] = None
+    relative_humidity_mean_pct: Optional[float] = None
+    rh_hours_ge_90: Optional[float] = None
+    precipitation_mm: Optional[float] = None
+
+
+class IDailyWeatherProvider(abc.ABC):
+    @abc.abstractmethod
+    def daily(self, lat: float, lon: float, start: date, end: date) -> list:
+        """DailyWeatherRecords for the days the provider covers within [start, end].
+        Raises WeatherProviderError when the provider can't be reached."""
+
+
+class WeatherProviderError(Exception):
+    pass
+
+
+def aggregate_hourly(times: list, temperature: list, humidity: list, precipitation: list,
+                     today: date, source: str) -> list:
+    """Hourly Open-Meteo arrays -> one DailyWeatherRecord per local day. Missing hours
+    stay missing; a value is only computed with >= MIN_HOURS_FOR_DAILY_VALUE hours."""
+    buckets = defaultdict(lambda: {"t": [], "rh": [], "p": []})
+    for i, stamp in enumerate(times):
+        day = date.fromisoformat(str(stamp)[:10])
+        for key, series in (("t", temperature), ("rh", humidity), ("p", precipitation)):
+            value = series[i] if i < len(series) else None
+            if value is not None:
+                buckets[day][key].append(float(value))
+
+    def enough(values):
+        return len(values) >= MIN_HOURS_FOR_DAILY_VALUE
+
+    records = []
+    for day in sorted(buckets):
+        b = buckets[day]
+        records.append(DailyWeatherRecord(
+            day=day, kind="observed" if day < today else "forecast", source=source,
+            temperature_mean_c=round(sum(b["t"]) / len(b["t"]), 2) if enough(b["t"]) else None,
+            temperature_min_c=round(min(b["t"]), 2) if enough(b["t"]) else None,
+            temperature_max_c=round(max(b["t"]), 2) if enough(b["t"]) else None,
+            relative_humidity_mean_pct=round(sum(b["rh"]) / len(b["rh"]), 2) if enough(b["rh"]) else None,
+            rh_hours_ge_90=float(sum(1 for v in b["rh"] if v >= 90)) if enough(b["rh"]) else None,
+            precipitation_mm=round(sum(b["p"]), 2) if enough(b["p"]) else None,
+        ))
+    return records
+
+
+class OpenMeteoDailyProvider(IDailyWeatherProvider):
+    """Open-Meteo (no API key). Recent past + forecast come from the forecast API
+    (past_days <= 92, forecast_days <= 16); older history from the archive API."""
+
+    HOURLY = "temperature_2m,relative_humidity_2m,precipitation"
+
+    def _get(self, url: str, params: dict) -> dict:
+        try:
+            response = httpx.get(url, params=params, timeout=settings.weather_request_timeout_seconds)
+            response.raise_for_status()
+            return response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise WeatherProviderError(f"{url}: {exc.__class__.__name__}") from exc
+
+    def daily(self, lat, lon, start, end):
+        today = datetime.now(timezone.utc).date()  # same "today" as the outbreak service
+        records = []
+        recent_start = max(start, today - timedelta(days=92))
+        if end >= recent_start:
+            data = self._get(settings.weather_api_base_url, {
+                "latitude": lat, "longitude": lon, "hourly": self.HOURLY, "timezone": "auto",
+                "past_days": min(92, max(0, (today - recent_start).days)),
+                "forecast_days": min(16, max(1, (end - today).days + 1))})
+            hourly = data.get("hourly", {})
+            records += aggregate_hourly(hourly.get("time", []), hourly.get("temperature_2m", []),
+                                        hourly.get("relative_humidity_2m", []), hourly.get("precipitation", []),
+                                        today, "open-meteo-forecast")
+        if start < recent_start:
+            data = self._get(settings.weather_archive_base_url, {
+                "latitude": lat, "longitude": lon, "hourly": self.HOURLY, "timezone": "auto",
+                "start_date": start.isoformat(), "end_date": (recent_start - timedelta(days=1)).isoformat()})
+            hourly = data.get("hourly", {})
+            records += aggregate_hourly(hourly.get("time", []), hourly.get("temperature_2m", []),
+                                        hourly.get("relative_humidity_2m", []), hourly.get("precipitation", []),
+                                        today, "open-meteo-archive")
+        return [r for r in records if start <= r.day <= end]

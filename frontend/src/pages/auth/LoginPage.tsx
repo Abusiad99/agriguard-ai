@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { ApiError } from "@/types/api";
+import { safeRedirectPath } from "@/lib/safeRedirect";
 
 export default function LoginPage() {
   const { t } = useLocale();
@@ -24,7 +25,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
     try {
       await login(email, password);
-      const from = (location.state as { from?: Location })?.from?.pathname ?? "/dashboard";
+      const from = safeRedirectPath((location.state as { from?: Location } | null)?.from?.pathname);
       navigate(from, { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.code === "INVALID_CREDENTIALS") {

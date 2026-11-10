@@ -6,6 +6,8 @@ design (NFR-MAINT-1).
 """
 from __future__ import annotations
 
+from uuid import uuid4
+
 from app.domain.entities.diagnosis import Diagnosis, SeverityLevel
 from app.domain.entities.disease import Disease, Treatment, TreatmentCategory
 from app.domain.entities.user import User, UserRole
@@ -57,6 +59,36 @@ class TestTreatmentDosageVerification:
         assert t.is_dosage_verified() is True
 
 
+class TestTreatmentInstructionDisplay:
+    """BR6, display side: chemical instructions reach users only when source-cited and
+    not authority-referral-only."""
+
+    def test_referral_only_chemical_is_valid_but_never_displayed(self):
+        t = Treatment(id=None, disease_id=None, category=TreatmentCategory.CHEMICAL,
+                       instructions="Apply 50ml/L", authority_referral_only=True)
+        assert t.is_dosage_verified() is True
+        assert t.may_display_instructions() is False
+
+    def test_referral_only_chemical_is_withheld_even_with_citation(self):
+        t = Treatment(id=None, disease_id=None, category=TreatmentCategory.CHEMICAL,
+                       instructions="Apply 50ml/L", source_citation="FAO Guideline 2023",
+                       authority_referral_only=True)
+        assert t.may_display_instructions() is False
+
+    def test_cited_chemical_is_displayed(self):
+        t = Treatment(id=None, disease_id=None, category=TreatmentCategory.CHEMICAL,
+                       instructions="Apply 50ml/L", source_citation="FAO Guideline 2023")
+        assert t.may_display_instructions() is True
+
+    def test_uncited_chemical_is_not_displayed(self):
+        t = Treatment(id=None, disease_id=None, category=TreatmentCategory.CHEMICAL, instructions="spray")
+        assert t.may_display_instructions() is False
+
+    def test_organic_is_always_displayed(self):
+        t = Treatment(id=None, disease_id=None, category=TreatmentCategory.ORGANIC, instructions="neem oil")
+        assert t.may_display_instructions() is True
+
+
 class TestDiseaseRecoveryData:
     """FR-RESULT-2: recovery probability/time only shown when actually present."""
 
@@ -104,3 +136,29 @@ class TestDiagnosisLowConfidence:
             original_image_ref="ref", low_confidence_flag=False, unrecognized_plant=False,
         )
         assert diag.is_reviewable_low_confidence() is False
+
+
+class TestDiagnosisHealthyState:
+    """A diagnosis with no linked knowledge-base disease is healthy only when the CV
+    model actually predicted the healthy condition."""
+
+    @staticmethod
+    def _diag(**kwargs) -> Diagnosis:
+        return Diagnosis(
+            id=None, user_id=None, plant_id=None, confidence_score=90.0, severity_level=None,
+            affected_area_pct=None, healthy_area_pct=None, original_image_ref="ref", **kwargs,
+        )
+
+    def test_predicted_disease_missing_from_knowledge_base_is_not_healthy(self):
+        diag = self._diag(disease_id=None, predicted_condition="late_blight")
+        assert diag.is_healthy() is False
+        assert diag.predicted_condition_display_name() == "Late blight"
+
+    def test_predicted_healthy_condition_is_healthy(self):
+        assert self._diag(disease_id=None, predicted_condition="healthy").is_healthy() is True
+
+    def test_linked_disease_is_never_healthy(self):
+        assert self._diag(disease_id=uuid4(), predicted_condition="late_blight").is_healthy() is False
+
+    def test_legacy_row_without_predicted_condition_keeps_disease_id_meaning(self):
+        assert self._diag(disease_id=None).is_healthy() is True

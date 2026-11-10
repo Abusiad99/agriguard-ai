@@ -15,6 +15,10 @@ class SeverityLevel(str, Enum):
     SEVERE = "severe"
 
 
+# The condition label the CV model emits for a healthy plant (ai/data/label_normalizer.py).
+HEALTHY_CONDITION = "healthy"
+
+
 @dataclass
 class PestDetection:
     id: Optional[UUID]
@@ -98,6 +102,13 @@ class Diagnosis:
     heatmap_image_ref: Optional[str] = None
     low_confidence_flag: bool = False
     unrecognized_plant: bool = False
+    # Raw CV condition label (e.g. "late_blight"), kept even when the knowledge base
+    # has no matching disease, so the diagnosis is never mistaken for "healthy".
+    predicted_condition: Optional[str] = None
+    # Image quality checks at scan time (ai/image_quality.py); None for older scans.
+    image_quality: Optional[dict] = None
+    # Classifier top predictions [{plant, condition, confidence}]; None for older scans.
+    top_predictions: Optional[list] = None
     location_lat: Optional[float] = None
     location_lon: Optional[float] = None
     supersedes_diagnosis_id: Optional[UUID] = None
@@ -112,3 +123,20 @@ class Diagnosis:
     def is_reviewable_low_confidence(self) -> bool:
         """BR1."""
         return self.low_confidence_flag and not self.unrecognized_plant
+
+    def is_healthy(self) -> bool:
+        """Healthy only when the CV model predicted the healthy condition. A missing
+        disease_id alone just means the knowledge base has no entry for the predicted
+        condition. Rows saved before predicted_condition existed fall back to the
+        old disease_id-based meaning."""
+        if self.unrecognized_plant or self.disease_id is not None:
+            return False
+        if self.predicted_condition is None:
+            return True
+        return self.predicted_condition == HEALTHY_CONDITION
+
+    def predicted_condition_display_name(self) -> Optional[str]:
+        """Human-readable form of predicted_condition, e.g. "late_blight" -> "Late blight"."""
+        if not self.predicted_condition:
+            return None
+        return self.predicted_condition.replace("_", " ").strip().capitalize()

@@ -5,8 +5,13 @@ import path from "path";
 // AgriGuard AI — frontend build configuration.
 // Dev server proxies /api and /storage to the FastAPI backend (see
 // backend/app/main.py) so the frontend can call relative paths in both dev and
-// production (NGINX performs the equivalent proxying in production — see
-// docker/nginx/nginx.conf).
+// production (in the optional Docker deployment NGINX does the same proxying —
+// see docker/nginx/nginx.conf). No NGINX is needed for local development.
+//
+// 127.0.0.1 rather than "localhost": on Windows "localhost" can resolve to ::1
+// first, while the backend dev server listens on IPv4 only.
+const apiTarget = process.env.AGRIGUARD_API_URL ?? "http://127.0.0.1:8000";
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -16,13 +21,14 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    strictPort: true,
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: apiTarget,
         changeOrigin: true,
       },
       "/storage": {
-        target: "http://localhost:8000",
+        target: apiTarget,
         changeOrigin: true,
       },
     },

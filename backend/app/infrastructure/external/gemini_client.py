@@ -222,9 +222,9 @@ def get_treatment_info(plant_name: str, disease_name: str) -> dict:
 
     result = {"found": True, "organic": None, "chemical": None, "biological": None}
     for t in treatments:
-        # BR6 enforcement, independent of Gemini — mirrors
-        # ScanOrchestrator._generate_report's identical rule.
-        if t.category.value == "chemical" and not t.is_dosage_verified():
+        # BR6 enforcement, independent of Gemini — the same rule the API response
+        # and ScanOrchestrator._generate_report apply.
+        if not t.may_display_instructions():
             instructions = ("Consult your local agricultural authority for verified "
                              "dosage guidance for this treatment; no verified dosage "
                              "is on file.")
@@ -258,11 +258,16 @@ _SYSTEM_INSTRUCTION = (
     "language, (4) provide practical treatment/prevention guidance grounded in "
     "the trusted database (use the provided tools to look up verified disease "
     "and treatment records rather than relying on general knowledge whenever "
-    "possible), and (5) assess environmental risk and urgency. "
+    "possible), and (5) assess urgency. "
     "You must NEVER propose a different disease than the one given, never invent "
     "a chemical product or dosage that isn't confirmed by a tool lookup, and "
     "never invent weather data — if the weather tool reports unavailable, simply "
-    "say environmental data isn't available."
+    "say environmental data isn't available. "
+    "Do NOT give any advice on whether or when to spray, irrigate or fertilise based "
+    "on the weather, and do NOT say that the weather favours a disease or a treatment: "
+    "AgriGuard assesses spraying conditions separately, from measured values and "
+    "published limits. In environmental_risk, only restate the measured weather values "
+    "you were given (or say they are unavailable), without judging them."
 )
 
 
@@ -272,10 +277,12 @@ def _build_context_prompt(ctx: GeminiRequestContext) -> str:
         f"CV model diagnosis: {ctx.cv_condition or 'unknown'}",
         f"CV model confidence: {ctx.cv_confidence_score}%",
     ]
+    # Severity and area come from a thresholded Grad-CAM attention map: say so, so the
+    # model does not repeat them as a measured lesion area.
     if ctx.cv_severity_level:
-        lines.append(f"CV model severity: {ctx.cv_severity_level}")
+        lines.append(f"CV model severity (estimated from an attention heatmap, not measured): {ctx.cv_severity_level}")
     if ctx.cv_affected_area_pct is not None:
-        lines.append(f"CV model affected area: {ctx.cv_affected_area_pct}%")
+        lines.append(f"CV model affected-area estimate (attention heatmap, not a measurement): {ctx.cv_affected_area_pct}%")
     if ctx.disease_description:
         lines.append(f"Database disease description: {ctx.disease_description}")
     if ctx.disease_symptoms:

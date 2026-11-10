@@ -11,16 +11,16 @@ React + TypeScript + Tailwind CSS frontend for the AgriGuard AI backend (Phase 3
   surface minimal and fully auditable for a project this size.
 
 ## Running locally
-```bash
-npm install
-npm run dev        # http://localhost:5173, proxies /api and /storage to :8000 (see vite.config.ts)
+No Docker or NGINX is needed. From the repository root (see the root
+[README.md](../README.md) for the full setup):
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-frontend.ps1   # npm ci
+powershell -ExecutionPolicy Bypass -File scripts\start-backend.ps1      # API on 127.0.0.1:8000
+powershell -ExecutionPolicy Bypass -File scripts\start-frontend.ps1     # http://127.0.0.1:5173
 ```
-The backend (Phase 3) must be running at `http://localhost:8000` — see `backend/README`
-equivalent instructions in `docker/README.md`, or run it directly:
-```bash
-cd ../backend
-uvicorn app.main:app --reload
-```
+Or by hand: `npm ci` then `npm run dev`. The dev server proxies `/api` and `/storage`
+to `http://127.0.0.1:8000` (see `vite.config.ts`); set `AGRIGUARD_API_URL` to point it
+elsewhere.
 
 ## Type checking & build
 ```bash
@@ -59,10 +59,12 @@ English and Arabic are supported via `LocaleContext`, which also flips `<html di
 layout (not just mirrored text) — see `DESIGN.md`'s RTL section for the logical-properties
 convention used throughout.
 
-## Known environment limitation (disclosed, not hidden)
-This project was built in a sandboxed environment with no network access to the npm registry, so
-`npm install` / `npm run build` / `npm run typecheck` could not be executed here. Every file was
-written by hand with careful attention to the TypeScript types and React/Router APIs involved, and
-cross-checked against the backend's actual schemas and routes (see the Phase 4 validation report).
-Run `npm install && npm run typecheck && npm run build` in a networked environment to get a real
-compiler-verified pass before deploying.
+## Status of the checks
+`npm run typecheck` and `npm run build` pass on Node.js 22 / Windows. `npm run lint`
+currently fails on pre-existing issues (one unused `eslint-disable` directive in
+`src/hooks/useAsync.ts`, plus five warnings — `react-refresh/only-export-components`
+and one `react-hooks/exhaustive-deps` in `AuthContext.tsx` — which fail under
+`--max-warnings 0`). There is no frontend unit-test suite yet.
+
+`tsc -b` writes its build info under `node_modules/.tmp/`, so no generated
+`vite.config.js` sits next to `vite.config.ts` (Vite would load a stale `.js` first).

@@ -1,0 +1,20 @@
+{
+  "_comment": "Outbreak risk pipeline config; see ai/outbreak/config.py. Training refuses to run below the min_* values.",
+  "grid_resolution_deg": 0.25,
+  "horizons_days": [3, 7, 14],
+  "step_days": 7,
+  "min_rows": 200,
+  "min_positives": 30,
+  "min_negatives": 30,
+  "min_span_days": 365,
+  "validation_fraction": 0.15,
+  "test_fraction": 0.2,
+  "min_calibration_per_class": 30,
+  "max_iter": 300,
+  "learning_rate": 0.05,
+  "max_leaf_nodes": 31,
+  "l2_regularization": 1.0,
+  "seed": 42,
+  "risk_cutpoints": [0.25, 0.5, 0.75],
+  "min_completeness": 0.5
+}

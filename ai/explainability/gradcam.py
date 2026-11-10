@@ -30,7 +30,7 @@ class GradCAM(Explainer):
         self._activations: Optional[torch.Tensor] = None
         self._gradients: Optional[torch.Tensor] = None
 
-    def _register_hooks(self, model: torch.nn.Module) -> torch.nn.Module:
+    def _register_hooks(self, model: torch.nn.Module) -> list:
         target_layer = self._target_layer or _find_last_conv_layer(model)
         if target_layer is None:
             raise ValueError(
@@ -44,20 +44,29 @@ class GradCAM(Explainer):
         def backward_hook(_module, _grad_input, grad_output):
             self._gradients = grad_output[0].detach()
 
-        target_layer.register_forward_hook(forward_hook)
-        target_layer.register_full_backward_hook(backward_hook)
-        return target_layer
+        return [
+            target_layer.register_forward_hook(forward_hook),
+            target_layer.register_full_backward_hook(backward_hook),
+        ]
 
     def explain(self, model: torch.nn.Module, input_tensor: torch.Tensor, target_class: int) -> np.ndarray:
         model.eval()
-        self._register_hooks(model)
+        # Reset so a call whose hooks never fire can't reuse the previous call's maps.
+        self._activations = None
+        self._gradients = None
+        # The model is a long-lived singleton (InferenceService), so hooks are removed
+        # after every call — otherwise each scan would stack another pair on the layer.
+        handles = self._register_hooks(model)
+        try:
+            input_tensor = input_tensor.clone().requires_grad_(True)
+            output = model(input_tensor)
+            score = output[0, target_class]
 
-        input_tensor = input_tensor.clone().requires_grad_(True)
-        output = model(input_tensor)
-        score = output[0, target_class]
-
-        model.zero_grad()
-        score.backward(retain_graph=False)
+            model.zero_grad()
+            score.backward(retain_graph=False)
+        finally:
+            for h in handles:
+                h.remove()
 
         if self._activations is None or self._gradients is None:
             raise RuntimeError("GradCAM hooks did not fire; check target layer selection.")

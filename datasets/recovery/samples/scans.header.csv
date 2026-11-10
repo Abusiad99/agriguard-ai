@@ -1,0 +1,1 @@
+scan_id,plant_id,scan_date,image_file,disease_label,severity_label,affected_area_pct,mask_file,treatment_stage

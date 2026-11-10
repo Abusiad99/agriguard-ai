@@ -64,3 +64,12 @@ class Treatment:
         if self.category != TreatmentCategory.CHEMICAL:
             return True
         return self.authority_referral_only or bool(self.source_citation)
+
+    def may_display_instructions(self) -> bool:
+        """BR6, display side: chemical instructions may be shown to users (API, PDF,
+        Gemini tools) only when source-cited and not authority-referral-only.
+        is_dosage_verified() is the save-time validity rule and is True for
+        referral-only treatments, so it must not be used to gate display."""
+        if self.category != TreatmentCategory.CHEMICAL:
+            return True
+        return bool(self.source_citation) and not self.authority_referral_only

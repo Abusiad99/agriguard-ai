@@ -21,7 +21,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.core.config import get_settings
+from app.core.config import get_settings, production_config_problems
 from app.infrastructure.db.models import Base
 from app.infrastructure.db.session import engine
 from app.interface.api.v1.health_router import router as health_router
@@ -58,6 +58,11 @@ async def lifespan(app: FastAPI):
     _configure_logging()
     logger = logging.getLogger("agriguard.startup")
     logger.info("Starting %s (env=%s)", settings.app_name, settings.app_env)
+    problems = production_config_problems(settings)
+    if problems:
+        for problem in problems:
+            logger.critical("Refusing to start: %s", problem)
+        raise RuntimeError("Insecure production configuration: " + " ".join(problems))
 
     if settings.database_url.startswith("sqlite"):
         # Test/dev convenience only: production schema is managed exclusively by
@@ -113,9 +118,17 @@ app.add_middleware(LoggingMiddleware)
 register_exception_handlers(app)
 
 # --- Static file mounting for locally-stored images/heatmaps (dev convenience;
-#     production typically serves these via NGINX or an S3-compatible CDN) ---
-Path(settings.local_storage_dir).mkdir(parents=True, exist_ok=True)
-app.mount("/storage", StaticFiles(directory=settings.local_storage_dir), name="storage")
+#     production typically serves these via NGINX or an S3-compatible CDN).
+#     Nothing in storage is public by default: photos, heatmaps and segmentation images
+#     are served through signed, expiring URLs (GET /api/v1/media/..., issued only after
+#     the owner/admin check — app/core/media_urls.py) and PDF reports only through the
+#     authenticated report endpoints. LEGACY_PUBLIC_MEDIA=true re-opens the old public
+#     image paths for deployments that still depend on them. ---
+if settings.legacy_public_media:
+    for _public_dir in ("scans", "heatmaps"):
+        _path = Path(settings.local_storage_dir) / _public_dir
+        _path.mkdir(parents=True, exist_ok=True)
+        app.mount(f"/storage/{_public_dir}", StaticFiles(directory=str(_path)), name=f"storage-{_public_dir}")
 
 # --- Routers ---
 app.include_router(health_router)  # public, unversioned: GET /health

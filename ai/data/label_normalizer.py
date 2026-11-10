@@ -3,6 +3,7 @@ LabelNormalizer — maps arbitrary raw dataset labels onto AgriGuard AI's canoni
 schema: "{plant}___{condition}" (FR-DATA-2).
 
 Different datasets format labels differently:
+  - PlantWild v2 (bundled):    "apple black rot", "bell pepper bacterial spot"
   - PlantVillage:              "Tomato___Early_blight", "Tomato___healthy"
   - PlantDoc:                  "Tomato leaf", "Apple Scab Leaf", "Corn Gray leaf spot"
   - New Plant Diseases (Kaggle): same convention as PlantVillage (it is derived from it)
@@ -10,28 +11,37 @@ Different datasets format labels differently:
   - Date Palm datasets:         "Bayoud", "black_scorch", "healthy_palm"
 
 The normalizer therefore does NOT assume a single delimiter convention. It:
-  1. Lowercases and strips the raw label.
-  2. If the "___" canonical delimiter is already present, splits on it directly.
-  3. Otherwise, scans the label for a known plant name/synonym anywhere in the string.
-  4. Removes the matched plant tokens and generic noise words ("leaf", "disease") from
-     the remainder to derive the condition.
-  5. Normalizes the condition string (spaces -> underscores, known condition synonyms
-     collapsed to one canonical spelling, e.g. "early_blight" for "earlyblight").
+  1. Lowercases the raw label and splits it into word tokens. A parenthetical part
+     ("Esca_(Black_Measles)", "bacterial leaf streak (black chaff)") is treated as an
+     alias: it can select a known condition but never becomes part of the class name.
+  2. If the "___" canonical delimiter is already present, splits on it directly
+     (dropping a repeated plant name from the condition, as in
+     "Tomato___Tomato_mosaic_virus").
+  3. Otherwise, finds the earliest known plant name/synonym in the label, matching
+     whole words only ("bean" never matches inside "soybean").
+  4. Takes the remaining words as the condition and maps it to a canonical spelling
+     only by EXACT lookup in CONDITION_SYNONYMS — first as written, then without
+     generic filler words ("leaf", "disease"), then via the parenthetical alias.
+  5. If no synonym matches, keeps the condition words as written (minus filler at
+     the edges, e.g. PlantDoc's trailing "Leaf"). Distinct diseases therefore always
+     stay distinct classes: "wheat stem rust" and "wheat stripe rust" are never
+     merged into a generic "rust", and "leaf" inside a name ("gray leaf spot") is kept.
   6. If no known plant is found, the plant is recorded as "unknown" and the full raw
      label (normalized) becomes the condition — these are surfaced in the audit report
      for manual review rather than silently mis-merged into an unrelated class.
 
-This is a best-effort heuristic layer, not a guarantee of perfect taxonomy alignment;
-its output is deterministic and logged so misclassified labels can be corrected by
-extending PLANT_SYNONYMS / CONDITION_SYNONYMS rather than by editing pipeline logic.
+Classes from different datasets merge only through an explicit CONDITION_SYNONYMS
+entry. The output is deterministic and logged, so a label that should merge with
+another can be fixed by extending PLANT_SYNONYMS / CONDITION_SYNONYMS rather than by
+editing pipeline logic.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
-# Canonical plant name -> list of synonym tokens that may appear in raw labels.
+# Canonical plant name -> list of synonyms (one or more words) that may appear in raw labels.
 PLANT_SYNONYMS: Dict[str, List[str]] = {
     "tomato": ["tomato"],
     "potato": ["potato"],
@@ -44,15 +54,45 @@ PLANT_SYNONYMS: Dict[str, List[str]] = {
     "mint": ["mint"],
     "parsley": ["parsley"],
     "coriander": ["coriander", "cilantro"],
-    "grape": ["grape"],
+    "grape": ["grape", "grapevine"],
     "apple": ["apple"],
     "olive": ["olive"],
     "orange": ["orange"],
     "lemon": ["lemon"],
     "date_palm": ["date_palm", "date palm", "palm", "phoenix_dactylifera"],
+    "banana": ["banana"],
+    "basil": ["basil"],
+    "bean": ["bean"],
+    "blueberry": ["blueberry"],
+    "broccoli": ["broccoli"],
+    "cabbage": ["cabbage"],
+    "carrot": ["carrot"],
+    "cauliflower": ["cauliflower"],
+    "celery": ["celery"],
+    "cherry": ["cherry"],
+    "citrus": ["citrus"],
+    "coffee": ["coffee"],
+    "eggplant": ["eggplant", "aubergine", "brinjal"],
+    "garlic": ["garlic"],
+    "ginger": ["ginger"],
+    "maple": ["maple"],
+    "peach": ["peach"],
+    "plum": ["plum"],
+    "raspberry": ["raspberry"],
+    "soybean": ["soybean", "soyabean"],
+    "squash": ["squash"],
+    "strawberry": ["strawberry"],
+    "tobacco": ["tobacco"],
+    "zucchini": ["zucchini", "courgette"],
 }
 
-# Raw condition token/phrase -> canonical condition spelling.
+# Canonical condition for a plant with no disease. Inference and the backend
+# (app/domain/entities/diagnosis.py) both key on this exact string.
+HEALTHY_CONDITION = "healthy"
+
+# Raw condition phrase -> canonical condition spelling. Matched exactly (whole
+# phrase), never as a substring, so a generic entry like "rust" can't absorb
+# "stem_rust" or "stripe_rust".
 CONDITION_SYNONYMS: Dict[str, str] = {
     "healthy": "healthy",
     "health": "healthy",
@@ -67,6 +107,7 @@ CONDITION_SYNONYMS: Dict[str, str] = {
     "downy_mildew": "downy_mildew",
     "downymildew": "downy_mildew",
     "rust": "rust",
+    "leaf_rust": "leaf_rust",
     "anthracnose": "anthracnose",
     "leaf_curl": "leaf_curl",
     "leafcurl": "leaf_curl",
@@ -74,6 +115,7 @@ CONDITION_SYNONYMS: Dict[str, str] = {
     "leaf_spot": "leaf_spot",
     "leafspot": "leaf_spot",
     "gray_leaf_spot": "gray_leaf_spot",
+    "cercospora_leaf_spot_gray_leaf_spot": "gray_leaf_spot",  # PlantVillage corn folder
     "graphiola_leaf_spot": "graphiola_leaf_spot",
     "bacterial_spot": "bacterial_spot",
     "bacterialspot": "bacterial_spot",
@@ -99,13 +141,22 @@ CONDITION_SYNONYMS: Dict[str, str] = {
     "cedar_apple_rust": "cedar_apple_rust",
     "haunglongbing": "citrus_greening",
     "citrus_greening": "citrus_greening",
+    "greening": "citrus_greening",
+    "greening_disease": "citrus_greening",
     "esca": "esca_black_measles",
     "black_measles": "esca_black_measles",
     "spider_mites": "spider_mites",
     "two_spotted_spider_mite": "spider_mites",
+    "spider_mites_two_spotted_spider_mite": "spider_mites",  # PlantVillage tomato folder
 }
 
+# Generic words that may be dropped when looking a condition up in CONDITION_SYNONYMS.
 _NOISE_WORDS = {"leaf", "leaves", "disease", "plant", "the", "a", "an", "of", "on"}
+# Filler trimmed from the start/end of an unmatched condition (PlantDoc's
+# "Apple Scab Leaf"); kept in the middle, where it is part of the name.
+_EDGE_FILLER = {"leaf", "leaves", "plant", "the", "a", "an", "of", "on"}
+
+_PARENTHETICAL = re.compile(r"\(([^)]*)\)")
 
 
 @dataclass(frozen=True)
@@ -124,6 +175,32 @@ def _tokenize(text: str) -> List[str]:
     return [t for t in text.split("_") if t]
 
 
+def _split_alias(text: str) -> Tuple[List[str], List[str]]:
+    """Return (main tokens, alias tokens) where the alias is any parenthetical text."""
+    alias = " ".join(_PARENTHETICAL.findall(text))
+    return _tokenize(_PARENTHETICAL.sub(" ", text)), _tokenize(alias)
+
+
+# (plant, synonym tokens), longest synonyms first so "date palm" beats "palm".
+_PLANT_PATTERNS: List[Tuple[str, List[str]]] = sorted(
+    ((plant, _tokenize(syn)) for plant, synonyms in PLANT_SYNONYMS.items() for syn in synonyms),
+    key=lambda item: -len(item[1]),
+)
+
+
+def _find_plant(tokens: List[str]) -> Optional[Tuple[str, int, int]]:
+    """Earliest whole-word occurrence of any plant synonym: (plant, start, end)."""
+    best = None
+    for plant, pattern in _PLANT_PATTERNS:
+        n = len(pattern)
+        for start in range(len(tokens) - n + 1):
+            if tokens[start:start + n] == pattern:
+                if best is None or start < best[1]:
+                    best = (plant, start, start + n)
+                break
+    return best
+
+
 class LabelNormalizer:
     def __init__(self):
         self._unmatched_plants: List[str] = []
@@ -134,49 +211,42 @@ class LabelNormalizer:
         # Case 1: already in canonical "plant___condition" form (PlantVillage-derived sets).
         if "___" in raw:
             plant_part, condition_part = raw.split("___", 1)
-            plant = self._match_plant(plant_part) or self._slugify(plant_part)
-            condition = self._match_condition(condition_part) or self._slugify(condition_part)
-            return CanonicalLabel(plant=plant, condition=condition)
+            found = _find_plant(_tokenize(plant_part))
+            plant = found[0] if found else self._slugify(plant_part)
+            tokens, alias = _split_alias(condition_part)
+            leading = _find_plant(tokens)
+            if leading and leading[0] == plant and leading[1] == 0:
+                tokens = tokens[leading[2]:]  # "Tomato___Tomato_mosaic_virus"
+            return CanonicalLabel(plant=plant, condition=self._resolve_condition(tokens, alias))
 
-        tokens = _tokenize(raw)
-        joined = "_".join(tokens)
-
-        plant = self._match_plant(joined)
-        if plant is None:
+        tokens, alias = _split_alias(raw)
+        found = _find_plant(tokens)
+        if found is None:
             self._unmatched_plants.append(raw_label)
             return CanonicalLabel(plant="unknown", condition=self._slugify(raw))
 
-        # Remove plant tokens + noise words from the token stream to isolate condition.
-        plant_tokens = set()
-        for syn in PLANT_SYNONYMS[plant]:
-            plant_tokens.update(_tokenize(syn))
-        remainder_tokens = [t for t in tokens if t not in plant_tokens and t not in _NOISE_WORDS]
-
-        if not remainder_tokens:
-            condition = "healthy" if "healthy" in tokens or "health" in tokens else "unspecified"
-        else:
-            condition = self._match_condition("_".join(remainder_tokens)) or "_".join(remainder_tokens)
-
-        return CanonicalLabel(plant=plant, condition=condition)
+        plant, start, end = found
+        remainder = tokens[:start] + tokens[end:]
+        return CanonicalLabel(plant=plant, condition=self._resolve_condition(remainder, alias))
 
     # ------------------------------------------------------------------
-    def _match_plant(self, text: str) -> str | None:
-        norm = "_".join(_tokenize(text))
-        for plant, synonyms in PLANT_SYNONYMS.items():
-            for syn in synonyms:
-                syn_norm = "_".join(_tokenize(syn))
-                if syn_norm and syn_norm in norm:
-                    return plant
-        return None
+    @staticmethod
+    def _resolve_condition(tokens: List[str], alias: List[str]) -> str:
+        significant = [t for t in tokens if t not in _NOISE_WORDS]
+        if not significant:
+            return "unspecified"
 
-    def _match_condition(self, text: str) -> str | None:
-        norm = "_".join(_tokenize(text))
-        if norm in CONDITION_SYNONYMS:
-            return CONDITION_SYNONYMS[norm]
-        for key, canonical in CONDITION_SYNONYMS.items():
-            if key in norm:
-                return canonical
-        return None
+        for candidate in (tokens, significant, alias, [t for t in alias if t not in _NOISE_WORDS]):
+            key = "_".join(candidate)
+            if key in CONDITION_SYNONYMS:
+                return CONDITION_SYNONYMS[key]
+
+        start, end = 0, len(tokens)
+        while tokens[start] in _EDGE_FILLER:
+            start += 1
+        while tokens[end - 1] in _EDGE_FILLER:
+            end -= 1
+        return "_".join(tokens[start:end])
 
     def _slugify(self, text: str) -> str:
         return "_".join(_tokenize(text)) or "unspecified"

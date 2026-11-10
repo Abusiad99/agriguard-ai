@@ -25,41 +25,51 @@ class AttentionRolloutExplainer(Explainer):
         self._attentions: List[torch.Tensor] = []
 
     def _register_hooks(self, model: torch.nn.Module):
+        """Capture each block's softmaxed attention matrix [B, heads, N, N].
+
+        timm's ViT Attention computes it as `attn = softmax(q @ k^T)` and passes it
+        through `self.attn_drop` — but only on the unfused path. With `fused_attn`
+        (the default) it calls scaled_dot_product_attention and the weights never
+        exist as a tensor, so fused attention is switched off for the duration of
+        the call and restored afterwards. Returns (hook handles, modules to restore).
+        """
         self._attentions = []
-        handles = []
+        handles, unfused = [], []
         for module in model.modules():
-            if module.__class__.__name__.lower().endswith("attention"):
-                def hook(_module, _input, output):
-                    # timm ViT attention modules typically don't return attention
-                    # weights directly; this hook is a placeholder for models that
-                    # expose them. See fallback path in explain().
-                    if isinstance(output, tuple) and len(output) > 1:
-                        self._attentions.append(output[1].detach())
-                handles.append(module.register_forward_hook(hook))
-        return handles
+            attn_drop = getattr(module, "attn_drop", None)
+            if attn_drop is None or not module.__class__.__name__.lower().endswith("attention"):
+                continue
+            if getattr(module, "fused_attn", False):
+                module.fused_attn = False
+                unfused.append(module)
+
+            def hook(_module, inputs, _output):
+                self._attentions.append(inputs[0].detach())
+
+            handles.append(attn_drop.register_forward_hook(hook))
+        return handles, unfused
 
     def explain(self, model: torch.nn.Module, input_tensor: torch.Tensor, target_class: int) -> np.ndarray:
         model.eval()
-        handles = self._register_hooks(model)
+        handles, unfused = self._register_hooks(model)
         try:
             with torch.no_grad():
                 _ = model(input_tensor)
         finally:
             for h in handles:
                 h.remove()
+            for module in unfused:
+                module.fused_attn = True
 
         img_size = input_tensor.shape[-1]
 
         if not self._attentions:
-            # Fallback: many timm ViT builds don't expose attention weights through
-            # standard hooks without `attn_drop`/`fused_attn` reconfiguration. In
-            # that case, fall back to a uniform center-weighted prior rather than
-            # fabricating a misleading heatmap — this is intentionally conservative.
-            grid = np.indices((img_size, img_size))
-            center = img_size / 2
-            dist = np.sqrt((grid[0] - center) ** 2 + (grid[1] - center) ** 2)
-            heatmap = 1 - (dist / dist.max())
-            return heatmap.astype(np.float32)
+            # No attention weights could be captured from this model. Raise rather
+            # than return a stand-in pattern: the caller treats an explainability
+            # failure as "no heatmap, no severity", which is honest, whereas a fixed
+            # center-weighted prior used to give every image the same ~39% affected
+            # area and "moderate" severity.
+            raise RuntimeError("Attention rollout: the model exposed no attention weights.")
 
         result = torch.eye(self._attentions[0].size(-1))
         for attn in self._attentions:

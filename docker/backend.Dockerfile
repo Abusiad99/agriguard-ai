@@ -53,6 +53,9 @@ WORKDIR /app
 # artifacts are mounted as a volume at runtime (see docker-compose.yml).
 COPY ai/ /app/ai/
 COPY backend/app /app/app
+# Report rules, the reference catalogue and the outbreak/recovery/segmentation settings,
+# read at runtime (app/core/config.py finds /app/configs next to /app/app).
+COPY configs/ /app/configs/
 COPY backend/alembic.ini /app/alembic.ini
 COPY database/01-schema.sql /app/database/01-schema.sql
 

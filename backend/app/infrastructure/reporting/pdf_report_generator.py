@@ -11,6 +11,7 @@ import io
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
+from xml.sax.saxutils import escape
 
 import qrcode
 from reportlab.lib import colors
@@ -40,6 +41,9 @@ class ReportData:
     original_image_path: str
     heatmap_image_path: Optional[str]
     report_verification_url: str
+    # Spraying conditions from app/application/reporting/weather_guidance.py (English),
+    # with the references it cites; None for a healthy prediction.
+    spraying_guidance: Optional[dict] = None
 
 
 class PdfReportGenerator:
@@ -101,26 +105,44 @@ class PdfReportGenerator:
         story.append(Spacer(1, 10))
 
         story.append(Paragraph("Description", self.styles["AgriSubheading"]))
-        story.append(Paragraph(data.disease_description, self.styles["AgriBody"]))
+        # Paragraph parses ReportLab markup: knowledge-base text is escaped so "&" or "<"
+        # (e.g. "copper & sulfur", "pH < 6") prints as written instead of failing the scan.
+        story.append(Paragraph(escape(data.disease_description or ""), self.styles["AgriBody"]))
 
         if data.organic_treatment:
             story.append(Paragraph("Organic Treatment", self.styles["AgriSubheading"]))
-            story.append(Paragraph(data.organic_treatment, self.styles["AgriBody"]))
+            story.append(Paragraph(escape(data.organic_treatment), self.styles["AgriBody"]))
         if data.chemical_treatment:
             story.append(Paragraph("Chemical Treatment", self.styles["AgriSubheading"]))
-            story.append(Paragraph(data.chemical_treatment, self.styles["AgriBody"]))
+            story.append(Paragraph(escape(data.chemical_treatment), self.styles["AgriBody"]))
         if data.biological_treatment:
             story.append(Paragraph("Biological Treatment", self.styles["AgriSubheading"]))
-            story.append(Paragraph(data.biological_treatment, self.styles["AgriBody"]))
+            story.append(Paragraph(escape(data.biological_treatment), self.styles["AgriBody"]))
 
         if data.prevention_advice:
             story.append(Paragraph("Prevention Advice", self.styles["AgriSubheading"]))
             for tip in data.prevention_advice:
-                story.append(Paragraph(f"• {tip}", self.styles["AgriBody"]))
+                story.append(Paragraph(f"• {escape(tip)}", self.styles["AgriBody"]))
 
         if data.weather_summary:
-            story.append(Paragraph("Weather Summary", self.styles["AgriSubheading"]))
-            story.append(Paragraph(data.weather_summary, self.styles["AgriBody"]))
+            story.append(Paragraph("Weather at Scan Time", self.styles["AgriSubheading"]))
+            story.append(Paragraph(escape(data.weather_summary), self.styles["AgriBody"]))
+
+        if data.spraying_guidance:
+            g = data.spraying_guidance
+            numbers = {r["id"]: r["n"] for r in g.get("references", [])}
+            story.append(Paragraph("Spraying Conditions at Scan Time", self.styles["AgriSubheading"]))
+            story.append(Paragraph(escape(g["summary"]), self.styles["AgriBody"]))
+            for item in g.get("items", []):
+                marks = sorted(numbers[r] for r in item.get("refs", []) if r in numbers)
+                suffix = f" [{', '.join(str(n) for n in marks)}]" if marks else ""
+                story.append(Paragraph(f"• {escape(item['text'])}{suffix}", self.styles["AgriBody"]))
+            if g.get("references"):
+                story.append(Paragraph("Sources", self.styles["AgriSubheading"]))
+                for ref in g["references"]:
+                    line = ". ".join(str(x).rstrip(". ") for x in (ref.get("authors"), ref.get("title"),
+                                                                   ref.get("organization"), ref.get("publication_date")) if x)
+                    story.append(Paragraph(f"[{ref['n']}] {escape(line)}. {escape(ref['url'])}", self.styles["AgriBody"]))
 
         story.append(Spacer(1, 16))
         story.append(Paragraph("Scan to view this report online:", self.styles["AgriBody"]))

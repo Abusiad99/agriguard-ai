@@ -1,0 +1,169 @@
+{
+  "_comment": "Built-in references for the claims AgriGuard's own report rules make (methods, monitoring, spraying conditions, general prevention). Every entry was checked by opening the source page on the verified_on date; title, authors, organization and date are as shown there. Each claim is AgriGuard's own short wording of what the source supports, in English and Arabic; the sources themselves are in English. Add an entry only after reading the source. Disease- and treatment-specific references belong in the knowledge base (API /api/v1/references), not here.",
+  "catalog_version": "references-v1",
+  "references": [
+    {
+      "id": "ref-gradcam",
+      "title": "Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization",
+      "authors": "Selvaraju, R. R.; Cogswell, M.; Das, A.; Vedantam, R.; Parikh, D.; Batra, D.",
+      "organization": "International Journal of Computer Vision (2019); earlier version at ICCV 2017",
+      "url": "https://arxiv.org/abs/1610.02391",
+      "doi": "10.1007/s11263-019-01228-7",
+      "publication_date": "2019 (journal); arXiv v1 7 Oct 2016",
+      "source_type": "peer_reviewed",
+      "language": "en",
+      "verified_on": "2026-11-07",
+      "claims": [
+        {"subject": "method:gradcam",
+         "en": "Grad-CAM produces a coarse localization map that highlights the image regions that were important for the model's prediction of a class.",
+         "ar": "تُنتج طريقة Grad-CAM خريطة تحديد موضع تقريبية تُبرز مناطق الصورة التي كانت مهمة لتوقّع النموذج لفئة ما."}
+      ]
+    },
+    {
+      "id": "ref-calibration",
+      "title": "On Calibration of Modern Neural Networks",
+      "authors": "Guo, C.; Pleiss, G.; Sun, Y.; Weinberger, K. Q.",
+      "organization": "International Conference on Machine Learning (ICML 2017)",
+      "url": "https://arxiv.org/abs/1706.04599",
+      "doi": "10.48550/arXiv.1706.04599",
+      "publication_date": "2017 (arXiv v1 14 Jun 2017)",
+      "source_type": "peer_reviewed",
+      "language": "en",
+      "verified_on": "2026-11-07",
+      "claims": [
+        {"subject": "method:confidence",
+         "en": "Modern neural networks are often poorly calibrated: their confidence scores do not reliably match how often their predictions are correct.",
+         "ar": "الشبكات العصبية الحديثة كثيرًا ما تكون ضعيفة المعايرة: درجات ثقتها لا تطابق بشكل موثوق مدى تكرار صحة توقعاتها."}
+      ]
+    },
+    {
+      "id": "ref-field-gap",
+      "title": "Using Deep Learning for Image-Based Plant Disease Detection",
+      "authors": "Mohanty, S. P.; Hughes, D. P.; Salathé, M.",
+      "organization": "Frontiers in Plant Science, 7:1419",
+      "url": "https://www.frontiersin.org/journals/plant-science/articles/10.3389/fpls.2016.01419/full",
+      "doi": "10.3389/fpls.2016.01419",
+      "publication_date": "2016-09-22",
+      "source_type": "peer_reviewed",
+      "language": "en",
+      "verified_on": "2026-11-07",
+      "claims": [
+        {"subject": "method:test_vs_field",
+         "en": "A plant-disease classifier that reached 99.35% accuracy on held-out images from its own controlled-condition dataset reached about 31% on images collected from other sources: test-set accuracy does not guarantee accuracy on photos taken under different conditions.",
+         "ar": "مصنّف لأمراض النبات بلغت دقته 99.35٪ على صور اختبار من مجموعة بياناته المصوّرة في ظروف مضبوطة، لم تتجاوز دقته نحو 31٪ على صور جُمعت من مصادر أخرى: دقة مجموعة الاختبار لا تضمن الدقة على صور التُقطت في ظروف مختلفة."}
+      ]
+    },
+    {
+      "id": "ref-hutton",
+      "title": "Development and implementation of a new national warning system for potato late blight in Great Britain (Hutton Criteria)",
+      "authors": null,
+      "organization": "AHDB (Agriculture and Horticulture Development Board); project led by the James Hutton Institute",
+      "url": "https://potatoes.ahdb.org.uk/development-and-implementation-of-a-new-national-warning-system-for-potato-late-blight-in-great-britain-hutton-criteria",
+      "doi": null,
+      "publication_date": "Project 2014–2017; criteria launched 2017",
+      "source_type": "agricultural_authority",
+      "language": "en",
+      "verified_on": "2026-11-07",
+      "claims": [
+        {"subject": "rule:hutton_criteria",
+         "en": "The Hutton Criteria — two consecutive days, each with a minimum temperature of at least 10 °C and at least 6 hours of relative humidity at or above 90% — were adopted in 2017 as the national potato late blight warning system for Great Britain.",
+         "ar": "معايير هاتون — يومان متتاليان، في كل منهما حرارة دنيا لا تقل عن 10 درجات مئوية و6 ساعات على الأقل برطوبة نسبية 90٪ أو أكثر — اعتُمدت عام 2017 نظامَ إنذار وطنيًا للفحة البطاطس المتأخرة في بريطانيا العظمى."}
+      ]
+    },
+    {
+      "id": "ref-umn-prevention",
+      "title": "Preventing plant diseases on farms",
+      "authors": "Hoidal, N. (Extension educator)",
+      "organization": "University of Minnesota Extension",
+      "url": "https://extension.umn.edu/agriculture/specialty-crops/vegetable-farming/preventing-plant-diseases-on-farms",
+      "doi": null,
+      "publication_date": "Reviewed 2026",
+      "source_type": "university_extension",
+      "language": "en",
+      "verified_on": "2026-11-07",
+      "claims": [
+        {"subject": "guidance:irrigation",
+         "en": "Watering near the roots (for example with drip irrigation) avoids splashing water onto the leaves, and mulch keeps soil from splashing onto plants when it rains.",
+         "ar": "الري قرب الجذور (مثل الري بالتنقيط) يتجنب رش الماء على الأوراق، والتغطية بالمهاد تمنع تطاير التربة على النباتات عند المطر."},
+        {"subject": "guidance:airflow",
+         "en": "Proper plant spacing and trellising improve airflow through the canopy.",
+         "ar": "التباعد المناسب بين النباتات وتدعيمها بالتعريشات يحسّنان تدفق الهواء خلال المجموع الخضري."},
+        {"subject": "guidance:sanitation",
+         "en": "Washing tools, boots, clothing and hands after working among diseased plants, and using clean seed, limits the spread and introduction of pathogens.",
+         "ar": "غسل الأدوات والأحذية والملابس واليدين بعد العمل بين نباتات مريضة، واستخدام بذور نظيفة، يحدّان من انتشار المسببات المرضية ودخولها."},
+        {"subject": "guidance:remove_infected",
+         "en": "Removing infected plants and their neighbours limits spread to healthy plants; diseased leaves should be removed only when plants are dry and no rain is forecast.",
+         "ar": "إزالة النباتات المصابة والمجاورة لها تحدّ من الانتشار إلى النباتات السليمة؛ ولا تُزال الأوراق المريضة إلا والنباتات جافة ولا مطر متوقع."},
+        {"subject": "guidance:rotation",
+         "en": "Rotating where crop families are planted (for example waiting three years before planting the same family in the same spot) is a recommended preventive practice.",
+         "ar": "تدوير أماكن زراعة العائلات المحصولية (مثل الانتظار ثلاث سنوات قبل زراعة العائلة نفسها في المكان نفسه) ممارسة وقائية موصى بها."},
+        {"subject": "guidance:scouting",
+         "en": "Plants should be checked for disease at least weekly, and the diseases found should be identified.",
+         "ar": "ينبغي فحص النباتات بحثًا عن الأمراض أسبوعيًا على الأقل وتحديد الأمراض المكتشفة."},
+        {"subject": "guidance:resistant_varieties",
+         "en": "Once a disease has been diagnosed, resistant varieties can be sought for the following season.",
+         "ar": "بعد تشخيص المرض يمكن البحث عن أصناف مقاومة للموسم التالي."}
+      ]
+    },
+    {
+      "id": "ref-spray-wind",
+      "title": "Evaluate the Weather (Pesticide Drift)",
+      "authors": "Initial compilation: Jim Wilson, PhD",
+      "organization": "Pesticide Environmental Stewardship (supported by the Center for Integrated Pest Management)",
+      "url": "https://pesticidestewardship.org/pesticide-drift/evaluate-the-weather/",
+      "doi": null,
+      "publication_date": null,
+      "source_type": "educational_resource",
+      "language": "en",
+      "verified_on": "2026-11-07",
+      "claims": [
+        {"subject": "guidance:spray_wind",
+         "en": "When the product label gives no specific wind directions, spray only when the wind is at least 3 and no more than 8 miles per hour (about 4.8–12.9 km/h): stronger wind increases drift, and calm or very light wind can indicate a temperature inversion.",
+         "ar": "إذا لم يحدد ملصق المنتج شروطًا للرياح، فلا يُرش إلا عندما تكون سرعة الرياح بين 3 و8 أميال في الساعة (نحو 4.8–12.9 كم/ساعة): الرياح الأقوى تزيد الانجراف، والهدوء أو الرياح الخفيفة جدًا قد تدل على انقلاب حراري."},
+        {"subject": "guidance:spray_temperature",
+         "en": "Some product labels set temperature or humidity limits for application; in hot, dry conditions spray droplets evaporate, become smaller and drift more easily.",
+         "ar": "تحدد بعض ملصقات المنتجات حدودًا للحرارة أو الرطوبة عند الاستخدام؛ وفي الأجواء الحارة الجافة تتبخر قطرات الرش وتصغر فتنجرف بسهولة أكبر."}
+      ]
+    },
+    {
+      "id": "ref-rainfast",
+      "title": "Rainfastness of Pesticides (PI238)",
+      "authors": "Wells, B.; Fishel, F. M.",
+      "organization": "University of Florida IFAS Extension (EDIS); archived fact sheet",
+      "url": "https://journals.flvc.org/edis/article/view/127183",
+      "doi": "10.32473/edis-pi238-2011",
+      "publication_date": "2011-08-31",
+      "source_type": "university_extension",
+      "language": "en",
+      "verified_on": "2026-11-07",
+      "claims": [
+        {"subject": "guidance:spray_rain",
+         "en": "It is generally best to avoid applying pesticides when rainfall is likely; products differ in their rainfast characteristics.",
+         "ar": "الأفضل عمومًا تجنب استخدام المبيدات عندما يكون المطر مرجحًا؛ وتختلف المنتجات في قدرتها على مقاومة الغسل بالمطر."}
+      ]
+    },
+    {
+      "id": "ref-cornell-sampling",
+      "title": "Sample collection and submission tips",
+      "authors": null,
+      "organization": "Plant Disease Diagnostic Clinic, Cornell University",
+      "url": "https://plantclinic.cornell.edu/services/collection-tips/",
+      "doi": null,
+      "publication_date": null,
+      "source_type": "university_extension",
+      "language": "en",
+      "verified_on": "2026-11-07",
+      "claims": [
+        {"subject": "guidance:confirm_before_pesticide",
+         "en": "A sample for laboratory diagnosis should be collected before any pesticide is applied: once pesticides have been applied an accurate diagnosis may be difficult.",
+         "ar": "ينبغي جمع عيّنة للتشخيص المخبري قبل استخدام أي مبيد: فبعد استخدام المبيدات قد يصعب الوصول إلى تشخيص دقيق."},
+        {"subject": "guidance:sample_stages",
+         "en": "Material showing several stages of damage, including the margin between dead and healthy tissue, helps diagnosis; early symptoms are often easiest to identify, while completely dead areas often contain secondary organisms.",
+         "ar": "العيّنات التي تُظهر مراحل ضرر مختلفة، بما فيها الحد الفاصل بين النسيج الميت والسليم، تساعد على التشخيص؛ فالأعراض المبكرة غالبًا أسهل تحديدًا، بينما المناطق الميتة تمامًا كثيرًا ما تحوي كائنات ثانوية."},
+        {"subject": "guidance:context_info",
+         "en": "Describing the damage pattern (all plants or one, whole leaves or spots), watering, fertilizing and recent rainfall, with photographs of the site, helps an accurate diagnosis.",
+         "ar": "وصف نمط الضرر (كل النباتات أم نبات واحد، أوراق كاملة أم بقع)، والري والتسميد والأمطار الأخيرة، مع صور للموقع، يساعد على تشخيص دقيق."}
+      ]
+    }
+  ]
+}
