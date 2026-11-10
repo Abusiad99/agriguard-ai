@@ -12,6 +12,28 @@ node_modules/
 .cache/
 *.log
 
+# Local runtime data (native development): uploads/reports, trained model runs,
+# logs, and the dev scripts' process records. Anchored to the repository root so the
+# source package backend/app/infrastructure/storage/ is not ignored.
+/storage/
+/artifacts/
+/logs/
+/backend/logs/
+/.run/
+
 .git/
 
-datasets/
+# Datasets: real data is never committed (plantwild_v2 images are tracked via Git LFS).
+# Only READMEs, schemas, examples, header templates and .gitkeep placeholders are.
+datasets/*
+!datasets/README.md
+!datasets/segmentation/
+!datasets/outbreak/
+!datasets/recovery/
+datasets/*/**/*
+!datasets/*/**/
+!datasets/*/README.md
+!datasets/*/**/.gitkeep
+!datasets/*/manifests/class_mapping.example.json
+!datasets/*/schemas/*.json
+!datasets/*/samples/*.header.csv

@@ -1,0 +1,7 @@
+{
+  "_comment": "Recovery assessment rules (ai/recovery/engine.py). Calibrate stable_band_pct with labeled data: python -m ai.recovery.calibrate",
+  "method_version": "rules-v1",
+  "stable_band_pct": 5.0,
+  "min_days_between": 1.0,
+  "blocking_quality_issues": ["blurry", "too_dark", "overexposed"]
+}

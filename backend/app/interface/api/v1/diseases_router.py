@@ -5,7 +5,7 @@ import math
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.application.services.knowledge_base_service import KnowledgeBaseService
 from app.domain.entities.user import User, UserRole
@@ -29,8 +29,8 @@ def _to_schema(disease) -> DiseaseResponseSchema:
 def list_diseases(
     plant_id: Optional[UUID] = None,
     search: Optional[str] = None,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1),
     current_user: User = Depends(get_current_user),
     kb_service: KnowledgeBaseService = Depends(get_knowledge_base_service),
 ):

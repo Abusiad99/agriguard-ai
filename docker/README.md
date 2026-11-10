@@ -1,4 +1,10 @@
-# AgriGuard AI — Deployment Guide 
+# AgriGuard AI — Docker Deployment Guide (optional)
+
+> **Docker is optional.** Development, testing and running the app work natively on
+> Windows without Docker — see the root [README.md](../README.md). This guide covers
+> the optional containerized deployment (PostgreSQL, backend, NGINX, frontend build,
+> training job).
+
 > ⚠️ **مهم قبل التحميل — هذا المشروع يستخدم Git LFS**
 >
 > مجلد `datasets/` يحتوي على آلاف صور التدريب المخزّنة عبر **Git LFS** (Git Large File Storage). لازم تتبع الخطوات التالية **بالترتيب** وإلا ستحصل على أخطاء تدريب غامضة (كل الصور تُرفض كـ "تالفة").
@@ -46,18 +52,30 @@
 
 ## 2. First-time setup
 ```bash
-cp .env.example .env
-# Edit .env: set JWT_SECRET_KEY (required — the compose file will refuse to start without it),
-# POSTGRES_PASSWORD, and CORS_ALLOW_ORIGINS for your frontend's origin.
-
 cd docker
+cp .env.example .env
+# Edit docker/.env: set JWT_SECRET_KEY (required — the compose file will refuse to start
+# without it), POSTGRES_PASSWORD, and CORS_ALLOW_ORIGINS for your frontend's origin.
+# Compose reads .env from this directory; the repository-root .env is the separate
+# native-development configuration and is not used here.
+
 docker compose up --build
 ```
+
+**Networking.** The compose network uses a fixed subnet (`AGRIGUARD_SUBNET`, default
+`172.28.0.0/16`) and NGINX a fixed address in it (`AGRIGUARD_NGINX_IP`, default
+`172.28.0.10`). The backend trusts `X-Forwarded-For` only from that NGINX address, so
+per-IP rate limits see the real visitor IP and a client cannot spoof it. If the subnet
+collides with an existing Docker network, change both values together in `docker/.env`.
+On Docker Desktop all published-port traffic reaches NGINX from the Docker gateway, so
+every visitor shares one rate-limit bucket there — a Docker Desktop limitation; on a
+Linux host NGINX sees real client addresses.
 
 This starts, in dependency order (via `depends_on` + `condition: service_healthy` /
 `condition: service_completed_successfully`):
 1. **postgres** (PostgreSQL 16) — healthcheck: `pg_isready`
-2. **redis** (Redis 7, AOF persistence) — healthcheck: `redis-cli ping`
+2. *(optional)* **redis** (Redis 7) — only with `docker compose --profile redis up`;
+   nothing in the application connects to it yet
 3. **backend** (FastAPI) — waits for Postgres to be *reachable* (not just "started"; see
    `docker/scripts/backend-entrypoint.sh`), runs `alembic upgrade head`, then starts
    `uvicorn` with 4 workers. Healthcheck: `GET /health`.
@@ -117,7 +135,7 @@ To use a GPU, uncomment the `deploy.resources.reservations.devices` block in
 | Service | Check | Interval |
 |---|---|---|
 | postgres | `pg_isready -U agriguard -d agriguard` | 10s |
-| redis | `redis-cli ping` | 10s |
+| redis (optional profile) | `redis-cli ping` | 10s |
 | backend | `curl -f http://localhost:8000/health` | 30s |
 | frontend | (one-shot build; `service_completed_successfully` gates nginx startup) | n/a |
 | nginx | `wget --spider http://localhost/health` | 30s |

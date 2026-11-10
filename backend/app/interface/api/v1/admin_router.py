@@ -25,8 +25,8 @@ def list_users(
     role: Optional[str] = None,
     is_active: Optional[bool] = None,
     search: Optional[str] = None,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1),
     current_user: User = Depends(require_roles(UserRole.ADMIN)),
     admin_service: AdminService = Depends(get_admin_service),
 ):

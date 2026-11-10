@@ -124,17 +124,33 @@ List endpoints accept `?page=1&page_size=20` (max `page_size=100`) and return:
   "estimated_recovery_time": null,
   "weather": { "temperature_c": 34.1, "humidity_pct": 28, "wind_speed_kmh": 12,
                "rain_probability_pct": 5, "uv_index": 8.2 },
-  "recommendation": { "irrigation_advice": "...", "spraying_advice": "...", "fertilizer_advice": "..." },
+  "recommendation": { "irrigation_advice": null, "spraying_advice": "...", "fertilizer_advice": null },
+  "weather_guidance": { "verdict": "within_limits | wait | incomplete | not_assessed | not_applicable",
+                        "observed_at": "2026-08-06T10:15:00+00:00", "limits": { "...": "..." },
+                        "measurements": { "...": "..." }, "summary": { "en": "...", "ar": "..." },
+                        "items": [ "..." ], "references": [ "..." ], "rules_version": "report-rules-v3" },
   "report_url": "https://.../reports/abc.pdf",
   "diagnosed_at": "2026-08-06T10:15:00Z"
 }
 ```
+`weather_guidance` is the sourced spraying-conditions assessment, with texts in English
+and Arabic; its fields, thresholds and verdicts are described in
+`docs/features/reports.md` (*Weather and spraying guidance*). In the legacy
+`recommendation`, `spraying_advice` is that assessment's English summary and
+`irrigation_advice` / `fertilizer_advice` are always `null`. `recommendation` is `null`
+for a healthy prediction. `ai_analysis.weather_advice_removed` is `true` when
+weather advice was filtered out of the AI analysis.
+
+Three fixed notices are sent in English for older clients, each with a status that clients use to show their own translation: `disease.knowledge_base_status` (`listed`, or `not_listed` when the predicted condition has no knowledge-base entry yet and `description` is the fixed notice), `treatment.<category>.instructions_withheld` (`true` when dosage instructions may not be shown and `instructions` is the referral to the local agricultural authority), and `prevention_advice_codes` (`irrigation_ventilation`, `remove_infected_material`, `rotation_sanitation`, in the order of `prevention_advice`). `not_listed` means only that AgriGuard has no entry for the condition; it says nothing about whether the prediction is right.
+
 **Response `200`** (unrecognized plant — Alt Flow A1)
 ```json
 { "diagnosis_id": "uuid", "status": "unrecognized_plant",
   "message": "We could not confidently identify this plant. Please retake the photo with clearer framing." }
 ```
-**Errors**: `422 INVALID_IMAGE`, `413 FILE_TOO_LARGE`, `429 RATE_LIMITED`, `503 AI_SERVICE_UNAVAILABLE`
+**Errors**: `422 INVALID_IMAGE` (also for images whose dimensions exceed Pillow's
+decompression-bomb limit, about 89 megapixels, however small the file), `413 FILE_TOO_LARGE`,
+`429 RATE_LIMITED`, `503 AI_SERVICE_UNAVAILABLE`
 
 ### GET `/diagnoses/{id}` — Auth required (owner or admin) — FR-RESULT
 **Response `200`**: same shape as the `/scans` `201` response body.

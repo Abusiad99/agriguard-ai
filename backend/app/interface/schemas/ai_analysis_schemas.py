@@ -65,7 +65,9 @@ class GeminiAnalysisSchema(BaseModel):
                      "Gemini must not invent chemical products or dosages not present in that context.",
     )
     prevention_guidance: List[str] = Field(default_factory=list)
-    environmental_risk: str = Field(description="Risk commentary given the weather/environmental context, if any.")
+    environmental_risk: str = Field(description="Restate the measured weather values given, or say they are unavailable. "
+                                                 "No spraying, irrigation or fertiliser advice and no claim that weather "
+                                                 "favours a disease.")
     urgency: AnalysisUrgency
 
 
@@ -85,3 +87,6 @@ class AiAnalysisSchema(BaseModel):
     status: AiAnalysisStatus
     analysis: Optional[GeminiAnalysisSchema] = None
     message: Optional[str] = None
+    # True when weather-based advice was removed from the AI text (ai_text_guard.py);
+    # the sourced spraying-conditions section (weather_guidance) replaces it.
+    weather_advice_removed: bool = False

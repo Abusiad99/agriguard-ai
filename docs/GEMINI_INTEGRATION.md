@@ -102,6 +102,24 @@ The output is validated against `GeminiAnalysisSchema` (Pydantic):
 }
 ```
 
+**Weather advice is not Gemini's to give.** The system instruction forbids
+weather-based spraying, irrigation or fertilizer advice and any claim that the
+weather favours a disease; `environmental_risk` may only restate the measured
+values it was given. Gemini receives only those measured values
+(`measurements_text`), never a verdict. Spraying conditions come from the shared,
+sourced module `app/application/reporting/weather_guidance.py` (see
+`docs/features/reports.md`, *Weather and spraying guidance*).
+
+Because a model can ignore instructions, `app/application/services/ai_text_guard.py`
+filters the stored analysis every time the API returns it: sentences and list
+items that pair a weather term with advice or a risk claim (English and Arabic)
+are removed, symptom and severity text is kept, and the stored row is not
+changed. The API then sets `ai_analysis.weather_advice_removed: true`, and the
+diagnosis page shows a translated notice instead of the removed text. The flag
+is not part of `GeminiAnalysisSchema`, the response schema sent to Gemini.
+This was tested with synthetic AI text (`tests/unit/test_ai_text_guard.py`,
+`tests/integration/test_weather_guidance_api.py`), not with a real API key.
+
 **Why two `generate_content` calls instead of one.** The `google-genai` SDK
 accepts `tools` (function calling) and `response_schema` (structured JSON
 output) in the same request config, but combining live tool-calling with a

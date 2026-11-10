@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "ignore_values": [],
+  "classes": [
+    {
+      "id": 0,
+      "name": "background",
+      "kind": "background",
+      "color": [
+        0,
+        0,
+        0
+      ],
+      "source_values": [
+        0
+      ],
+      "source_names": [
+        "background"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "healthy_leaf",
+      "kind": "leaf",
+      "color": [
+        46,
+        139,
+        87
+      ],
+      "source_values": [
+        1
+      ],
+      "source_names": [
+        "leaf",
+        "healthy_leaf"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "lesion",
+      "kind": "disease",
+      "color": [
+        220,
+        38,
+        38
+      ],
+      "source_values": [
+        2
+      ],
+      "source_names": [
+        "lesion",
+        "disease"
+      ]
+    }
+  ]
+}

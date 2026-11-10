@@ -7,6 +7,7 @@
  * rather than converted to camelCase, so there is never a silent mapping layer
  * that could drift from the backend contract.
  */
+import type { ImageQuality, Segmentation } from "@/types/aiFeatures";
 
 // ---------- Auth (backend/app/interface/schemas/auth_schemas.py) ----------
 export type UserRole = "farmer" | "agronomist" | "admin";
@@ -99,10 +100,14 @@ export interface DiseaseSchema {
   symptoms: string[];
   causes: string[];
   transmission_method?: string | null;
+  /** "not_listed": predicted condition with no knowledge-base entry yet; `description` is then a fixed English notice. */
+  knowledge_base_status?: "listed" | "not_listed";
 }
 
 export interface TreatmentGroupSchema {
   instructions?: string | null;
+  /** True when the instructions may not be shown (BR6); `instructions` is then a fixed English referral. */
+  instructions_withheld?: boolean;
   safety_notes?: string | null;
   source_citation?: string | null;
 }
@@ -129,8 +134,54 @@ export interface WeatherSchema {
 
 export interface RecommendationSchema {
   irrigation_advice?: string | null;
+  /** Kept for older clients: the English summary of `weather_guidance`. */
   spraying_advice?: string | null;
   fertilizer_advice?: string | null;
+}
+
+// ---------- Weather guidance (backend/app/application/reporting/weather_guidance.py) ----------
+// The assessment is made on the server, from measured weather and verified sources; the UI
+// only displays it. Never re-derive verdicts or thresholds here.
+export type WeatherVerdict = "within_limits" | "wait" | "incomplete" | "not_assessed" | "not_applicable";
+export type WeatherMeasurementKey = "wind_speed_kmh" | "rain_probability_pct" | "temperature_c" | "humidity_pct" | "uv_index";
+
+export interface WeatherMeasurement {
+  state: "ok" | "missing" | "invalid";
+  value?: number | null;
+  status?: string;
+}
+
+export interface WeatherGuidanceItem {
+  code: "wind" | "rain" | "label_limits";
+  status: "ok" | "caution" | "unavailable" | "info";
+  basis: "reference" | "missing_data" | "agriguard_rule";
+  refs: string[];
+  text: Record<"en" | "ar", string>;
+}
+
+export interface WeatherGuidanceReference {
+  id: string;
+  n: number;
+  title: string;
+  authors?: string | null;
+  organization?: string | null;
+  url: string;
+  doi?: string | null;
+  publication_date?: string | null;
+  source_type?: string | null;
+  verified_on?: string | null;
+  claims: Partial<Record<"en" | "ar", string[]>>;
+}
+
+export interface WeatherGuidance {
+  verdict: WeatherVerdict;
+  observed_at?: string | null;
+  limits?: Record<string, number>;
+  measurements: Partial<Record<WeatherMeasurementKey, WeatherMeasurement>>;
+  summary: Record<"en" | "ar", string>;
+  items: WeatherGuidanceItem[];
+  references: WeatherGuidanceReference[];
+  rules_version?: string | null;
 }
 
 // ---------- AI Agricultural Analysis (Gemini reasoning layer — backend/app/interface/schemas/ai_analysis_schemas.py) ----------
@@ -158,6 +209,8 @@ export interface AiAnalysisSchema {
   status: AiAnalysisStatus;
   analysis?: GeminiAnalysisSchema | null;
   message?: string | null;
+  /** Weather-based advice in the AI text was left out (no measurement or source behind it). */
+  weather_advice_removed?: boolean;
 }
 
 export type DiagnosisStatus = "completed" | "unrecognized_plant";
@@ -177,13 +230,25 @@ export interface DiagnosisResponse {
   pests_detected: PestSchema[];
   treatment?: TreatmentSchema | null;
   prevention_advice: string[];
+  /** Stable codes for prevention_advice, same order (general practice, not disease-specific). */
+  prevention_advice_codes?: string[];
   recovery_probability?: number | null;
   estimated_recovery_time?: string | null;
   weather?: WeatherSchema | null;
   recommendation?: RecommendationSchema | null;
+  /** Spraying conditions from measured weather and verified sources, in English and Arabic. */
+  weather_guidance?: WeatherGuidance | null;
   report_url?: string | null;
   diagnosed_at?: string | null;
   ai_analysis?: AiAnalysisSchema | null;
+  /** "explainability_heatmap": severity/affected area above are a Grad-CAM estimate, not a measurement. */
+  severity_method?: "explainability_heatmap" | null;
+  /** Separate segmentation model's localization (null for older scans). */
+  segmentation?: Segmentation | null;
+  image_quality?: ImageQuality | null;
+  tracked_plant?: { id: string; name: string } | null;
+  /** false when an admin views someone else's diagnosis (owner-only actions hidden). */
+  viewer_is_owner?: boolean | null;
 }
 
 export interface UnrecognizedPlantResponse {

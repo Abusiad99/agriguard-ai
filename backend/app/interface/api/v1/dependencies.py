@@ -16,6 +16,8 @@ from app.application.services.auth_service import AuthService
 from app.application.services.dashboard_admin_service import AdminService, DashboardService
 from app.application.services.gemini_analysis_service import GeminiAnalysisService
 from app.application.services.knowledge_base_service import KnowledgeBaseService
+from app.application.services.outbreak_service import OutbreakService
+from app.application.services.recovery_service import RecoveryService
 from app.application.services.scan_service import ScanOrchestrator
 from app.core.config import get_settings
 from app.core.exceptions import AuthenticationError, AuthorizationError, TokenExpiredOrInvalidError
@@ -23,8 +25,14 @@ from app.domain.entities.user import User, UserRole
 from app.infrastructure.db.session import get_db
 from app.infrastructure.external.ai_pipeline_client import AiPipelineClient
 from app.infrastructure.external.gemini_client import GeminiClient
-from app.infrastructure.external.weather_client import WeatherService
+from app.infrastructure.external.model_clients import OutbreakModelClient, SegmentationClient
+from app.infrastructure.external.weather_client import OpenMeteoDailyProvider, WeatherService
 from app.infrastructure.reporting.pdf_report_generator import PdfReportGenerator
+from app.infrastructure.repositories.ai_features_repository import (
+    SqlAlchemyOutbreakRepository,
+    SqlAlchemyRecoveryRepository,
+    SqlAlchemySegmentationRepository,
+)
 from app.infrastructure.repositories.audit_log_repository import SqlAlchemyAuditLogRepository
 from app.infrastructure.repositories.diagnosis_repository import SqlAlchemyDiagnosisRepository
 from app.infrastructure.repositories.knowledge_base_repository import (
@@ -48,6 +56,10 @@ _pdf_generator = PdfReportGenerator()
 _ai_client = AiPipelineClient()
 _gemini_service = GeminiAnalysisService(GeminiClient())
 _storage = LocalObjectStorage(base_dir=settings.local_storage_dir)
+# Optional AI models: loaded lazily once per worker, independent of each other.
+_segmentation_client = SegmentationClient()
+_outbreak_client = OutbreakModelClient()
+_daily_weather = OpenMeteoDailyProvider()
 
 
 # --- Repository providers ---
@@ -79,7 +91,70 @@ def get_audit_log_repository(db: Session = Depends(get_db)) -> SqlAlchemyAuditLo
     return SqlAlchemyAuditLogRepository(db)
 
 
+def get_segmentation_repository(db: Session = Depends(get_db)) -> SqlAlchemySegmentationRepository:
+    return SqlAlchemySegmentationRepository(db)
+
+
+def get_recovery_repository(db: Session = Depends(get_db)) -> SqlAlchemyRecoveryRepository:
+    return SqlAlchemyRecoveryRepository(db)
+
+
+def get_outbreak_repository(db: Session = Depends(get_db)) -> SqlAlchemyOutbreakRepository:
+    return SqlAlchemyOutbreakRepository(db)
+
+
 # --- Application service providers ---
+def get_recovery_service(
+    repo: SqlAlchemyRecoveryRepository = Depends(get_recovery_repository),
+    diagnosis_repo: SqlAlchemyDiagnosisRepository = Depends(get_diagnosis_repository),
+    segmentation_repo: SqlAlchemySegmentationRepository = Depends(get_segmentation_repository),
+) -> RecoveryService:
+    return RecoveryService(repo, diagnosis_repo, segmentation_repo)
+
+
+def get_outbreak_service(repo: SqlAlchemyOutbreakRepository = Depends(get_outbreak_repository)) -> OutbreakService:
+    return OutbreakService(repo, _outbreak_client, _daily_weather)
+
+
+def get_reference_service(
+    db: Session = Depends(get_db),
+    plant_repo: SqlAlchemyPlantRepository = Depends(get_plant_repository),
+    disease_repo: SqlAlchemyDiseaseRepository = Depends(get_disease_repository),
+    treatment_repo: SqlAlchemyTreatmentRepository = Depends(get_treatment_repository),
+    audit_repo: SqlAlchemyAuditLogRepository = Depends(get_audit_log_repository),
+):
+    from app.application.services.reference_service import ReferenceService
+    from app.infrastructure.repositories.knowledge_reference_repository import SqlAlchemyKnowledgeReferenceRepository
+
+    return ReferenceService(SqlAlchemyKnowledgeReferenceRepository(db), plant_repo, disease_repo, treatment_repo, audit_repo)
+
+
+def get_report_service(
+    db: Session = Depends(get_db),
+    diagnosis_repo: SqlAlchemyDiagnosisRepository = Depends(get_diagnosis_repository),
+    disease_repo: SqlAlchemyDiseaseRepository = Depends(get_disease_repository),
+    treatment_repo: SqlAlchemyTreatmentRepository = Depends(get_treatment_repository),
+    segmentation_repo: SqlAlchemySegmentationRepository = Depends(get_segmentation_repository),
+    recovery_service: RecoveryService = Depends(get_recovery_service),
+    outbreak_service: OutbreakService = Depends(get_outbreak_service),
+    reference_service=Depends(get_reference_service),
+):
+    from app.application.reporting.service import ReportService
+    from app.infrastructure.repositories.report_center_repository import SqlAlchemyReportCenterRepository
+
+    return ReportService(SqlAlchemyReportCenterRepository(db), diagnosis_repo, disease_repo, treatment_repo,
+                         segmentation_repo, recovery_service, outbreak_service, _storage,
+                         reference_service=reference_service)
+
+
+def get_segmentation_client() -> SegmentationClient:
+    return _segmentation_client
+
+
+def get_outbreak_client() -> OutbreakModelClient:
+    return _outbreak_client
+
+
 def get_auth_service(
     user_repo: SqlAlchemyUserRepository = Depends(get_user_repository),
     token_repo: SqlAlchemyRefreshTokenRepository = Depends(get_refresh_token_repository),
@@ -92,11 +167,16 @@ def get_scan_orchestrator(
     disease_repo: SqlAlchemyDiseaseRepository = Depends(get_disease_repository),
     treatment_repo: SqlAlchemyTreatmentRepository = Depends(get_treatment_repository),
     diagnosis_repo: SqlAlchemyDiagnosisRepository = Depends(get_diagnosis_repository),
+    segmentation_repo: SqlAlchemySegmentationRepository = Depends(get_segmentation_repository),
+    recovery_service: RecoveryService = Depends(get_recovery_service),
+    outbreak_service: OutbreakService = Depends(get_outbreak_service),
 ) -> ScanOrchestrator:
     return ScanOrchestrator(
         storage=_storage, ai_client=_ai_client, plant_repo=plant_repo, disease_repo=disease_repo,
         treatment_repo=treatment_repo, diagnosis_repo=diagnosis_repo, weather_service=_weather_service,
         pdf_generator=_pdf_generator, gemini_service=_gemini_service,
+        segmentation_client=_segmentation_client, segmentation_repo=segmentation_repo,
+        outbreak_service=outbreak_service, recovery_service=recovery_service,
     )
 
 

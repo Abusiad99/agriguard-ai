@@ -27,6 +27,10 @@ class DiagnosisModel(Base):
     heatmap_image_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
     low_confidence_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     unrecognized_plant: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    predicted_condition: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    image_quality_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Classifier top-3 [{plant, condition, confidence}] (migration 0007); NULL for older scans.
+    top_predictions_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
     location_lat: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
     location_lon: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
     supersedes_diagnosis_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("diagnoses.id"), nullable=True)

@@ -14,6 +14,7 @@ under real pytest once `pip install -r backend/requirements.txt` succeeds.
 from __future__ import annotations
 
 import io
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,7 +38,7 @@ def _make_test_image_bytes() -> bytes:
 def mocks():
     storage = MagicMock()
     storage.save_bytes.return_value = "scans/test.jpg"
-    storage.resolve_path.return_value = Path("/tmp/fake_scan.jpg")
+    storage.resolve_path.return_value = Path(tempfile.gettempdir()) / "agriguard_fake_scan.jpg"
     storage.exists.return_value = True
 
     ai_client = MagicMock()
@@ -96,6 +97,53 @@ class TestImageValidation:
         )
         assert result.status == "completed"
         mocks["storage"].save_bytes.assert_called_once()
+
+
+class TestDiseaseMissingFromKnowledgeBase:
+    """A predicted disease with no knowledge-base row must not be saved or reported
+    as healthy."""
+
+    def _fake_output(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeOutput:
+            unrecognized_plant: bool = False
+            plant: str = "tomato"
+            condition: str = "late_blight"
+            confidence_score: float = 94.0
+            low_confidence_flag: bool = False
+            severity_level: str = "moderate"
+            affected_area_pct: float = 25.0
+            healthy_area_pct: float = 75.0
+
+        return FakeOutput()
+
+    def test_predicted_condition_is_persisted_and_reported_in_pdf(self, orchestrator, mocks):
+        mocks["ai_client"].diagnose.return_value = self._fake_output()
+        mocks["disease_repo"].get_current_by_plant_and_name.return_value = None  # not in the KB
+        mocks["diagnosis_repo"].create.side_effect = lambda diagnosis: diagnosis
+        mocks["diagnosis_repo"].get_by_id.return_value = MagicMock(id=uuid.uuid4())
+
+        orchestrator.process_scan(user_id=uuid.uuid4(), image_bytes=_make_test_image_bytes(), content_type="image/jpeg")
+
+        created = mocks["diagnosis_repo"].create.call_args[0][0]
+        assert created.disease_id is None
+        assert created.predicted_condition == "late_blight"
+        assert created.is_healthy() is False
+        report_data = mocks["pdf_generator"].generate.call_args[0][0]
+        assert report_data.disease_name == "Late blight"
+        assert "healthy" not in report_data.disease_name.lower()
+
+    def test_heatmap_ref_is_dropped_when_no_heatmap_was_written(self, orchestrator, mocks):
+        mocks["ai_client"].diagnose.return_value = self._fake_output()
+        mocks["storage"].exists.return_value = False  # healthy prediction or explainability failure
+        mocks["diagnosis_repo"].create.return_value = MagicMock(id=uuid.uuid4())
+        mocks["diagnosis_repo"].get_by_id.return_value = MagicMock(id=uuid.uuid4())
+
+        orchestrator.process_scan(user_id=uuid.uuid4(), image_bytes=_make_test_image_bytes(), content_type="image/jpeg")
+
+        assert mocks["diagnosis_repo"].create.call_args[0][0].heatmap_image_ref is None
 
 
 class TestUnrecognizedPlantFlow:
@@ -249,3 +297,23 @@ class TestGeminiIntegrationInScanFlow:
         assert result.status == "completed"
         created_diagnosis = mocks["diagnosis_repo"].create.call_args[0][0]
         assert created_diagnosis.ai_analysis is None
+
+
+class TestPhotoOrientation:
+    """Phone photos store their rotation as EXIF. It is applied before EXIF is stripped,
+    so the saved photo and every model see the plant upright."""
+
+    def test_exif_rotated_photo_is_saved_upright(self, orchestrator, mocks):
+        upright = Image.new("RGB", (64, 32), (90, 130, 60))
+        raw = upright.transpose(Image.ROTATE_90)          # stored sideways (32x64) ...
+        exif = Image.Exif()
+        exif[0x0112] = 6                                   # ... with "rotate 90 CW to display"
+        buf = io.BytesIO()
+        raw.save(buf, format="JPEG", exif=exif.tobytes())
+        mocks["ai_client"].diagnose.return_value = MagicMock(unrecognized_plant=True)
+
+        orchestrator.process_scan(user_id=uuid.uuid4(), image_bytes=buf.getvalue(), content_type="image/jpeg")
+
+        saved = Image.open(io.BytesIO(mocks["storage"].save_bytes.call_args[0][0]))
+        assert saved.size == (64, 32)
+        assert not saved.getexif().get(0x0112)  # EXIF is still stripped

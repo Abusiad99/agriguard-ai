@@ -5,8 +5,10 @@ x-backend-common: &backend-common
 
   environment:
     DATABASE_URL: postgresql+psycopg2://agriguard:${POSTGRES_PASSWORD:-agriguard}@postgres:5432/agriguard
-    REDIS_URL: redis://redis:6379/0
-    JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set — see .env.example}
+    # Redis is optional and currently unused (in-process caches); set REDIS_URL to
+    # redis://redis:6379/0 when starting the `redis` profile below.
+    REDIS_URL: ${REDIS_URL:-}
+    JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set — see docker/.env.example}
     APP_ENV: ${APP_ENV:-production}
     DEBUG: ${DEBUG:-false}
     LOCAL_STORAGE_DIR: /app/storage
@@ -16,6 +18,13 @@ x-backend-common: &backend-common
     WEATHER_API_BASE_URL: ${WEATHER_API_BASE_URL:-https://api.open-meteo.com/v1/forecast}
     GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
+    # Trust X-Forwarded-For only from the nginx container, so uvicorn sets
+    # request.client to the real visitor IP. Without this every request appears to
+    # come from nginx and RateLimitMiddleware's per-IP limits become site-wide.
+    # Deliberately not the whole subnet: it contains the Docker gateway, and traffic
+    # entering through Docker's port proxy (always the case on Docker Desktop)
+    # arrives from the gateway — trusting it would let a client spoof its IP.
+    FORWARDED_ALLOW_IPS: ${AGRIGUARD_NGINX_IP:-172.28.0.10}
 
   volumes:
     - storage_data:/app/storage
@@ -24,8 +33,6 @@ x-backend-common: &backend-common
 
   depends_on:
     postgres:
-      condition: service_healthy
-    redis:
       condition: service_healthy
 
   networks:
@@ -61,7 +68,11 @@ services:
       - "5432:5432"
 
 
+  # Optional: nothing in the application connects to Redis yet (the weather cache and
+  # rate limiter are in-process). Start it with `docker compose --profile redis up`.
   redis:
+    profiles:
+      - redis
     image: redis:7-alpine
     container_name: agriguard_redis
     restart: unless-stopped
@@ -140,7 +151,10 @@ services:
         condition: service_completed_successfully
 
     networks:
-      - agriguard_network
+      agriguard_network:
+        # Fixed address: the backend trusts X-Forwarded-For from this IP only
+        # (FORWARDED_ALLOW_IPS above). Must lie inside AGRIGUARD_SUBNET.
+        ipv4_address: ${AGRIGUARD_NGINX_IP:-172.28.0.10}
 
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
@@ -197,6 +211,11 @@ services:
 networks:
   agriguard_network:
     driver: bridge
+    # Fixed subnet so nginx can have the fixed address the backend trusts. Override
+    # AGRIGUARD_SUBNET (and AGRIGUARD_NGINX_IP inside it) on a collision.
+    ipam:
+      config:
+        - subnet: ${AGRIGUARD_SUBNET:-172.28.0.0/16}
 
 
 volumes:

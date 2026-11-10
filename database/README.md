@@ -6,12 +6,16 @@
   maintenance. Wrapped in a single transaction (`BEGIN`/`COMMIT`) so it applies atomically.
 
 ## 2. Applying the Schema
-```bash
-createdb agriguard
-psql -d agriguard -f database/01-schema.sql
+Use the Alembic migrations — they are the source of truth (see §6) and include changes made
+after this DDL was written (`0002` AI analyses, `0003` `diagnoses.predicted_condition`):
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\migrate.ps1   # alembic upgrade head, against DATABASE_URL in .env
 ```
-Or, via Docker Compose (see Phase 9 deployment docs), the schema is mounted into the Postgres
-container's `/docker-entrypoint-initdb.d/` on first boot.
+This works against any locally installed PostgreSQL (see the root README); Docker is not
+required. In the optional Docker deployment the backend container runs the same
+`alembic upgrade head` at startup. `01-schema.sql` is kept for review only — applying it with
+`psql` would leave the database without the later migrations and without an
+`alembic_version` row.
 
 ## 3. Design Notes & Deviations from the Conceptual ERD
 The ERD (`docs/02-system-design/12-erd.mermaid`) models `TREATMENT_CATEGORIES` as a lookup

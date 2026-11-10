@@ -9,11 +9,18 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.interface.api.v1.admin_router import router as admin_router
+from app.interface.api.v1.agri_reports_router import router as agri_reports_router
 from app.interface.api.v1.auth_router import router as auth_router
 from app.interface.api.v1.dashboard_router import router as dashboard_router
 from app.interface.api.v1.diseases_router import router as diseases_router
+from app.interface.api.v1.media_router import router as media_router
+from app.interface.api.v1.models_router import router as models_router
+from app.interface.api.v1.outbreak_router import router as outbreak_router
+from app.interface.api.v1.plants_router import router as plants_router
+from app.interface.api.v1.references_router import router as references_router
 from app.interface.api.v1.reports_router import router as reports_router
 from app.interface.api.v1.scans_router import router as scans_router
+from app.interface.api.v1.shared_reports_router import router as shared_reports_router
 from app.interface.api.v1.treatments_router import router as treatments_router
 from app.interface.api.v1.weather_router import router as weather_router
 
@@ -25,9 +32,16 @@ from app.interface.api.v1.weather_router import router as weather_router
 api_v1_router = APIRouter()
 api_v1_router.include_router(auth_router)
 api_v1_router.include_router(scans_router)
+api_v1_router.include_router(media_router)
+api_v1_router.include_router(agri_reports_router)
+api_v1_router.include_router(shared_reports_router)
 api_v1_router.include_router(reports_router)
 api_v1_router.include_router(dashboard_router)
 api_v1_router.include_router(diseases_router)
 api_v1_router.include_router(treatments_router)
+api_v1_router.include_router(references_router)
 api_v1_router.include_router(admin_router)
 api_v1_router.include_router(weather_router)
+api_v1_router.include_router(models_router)
+api_v1_router.include_router(plants_router)
+api_v1_router.include_router(outbreak_router)

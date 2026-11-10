@@ -14,6 +14,7 @@ single point of failure").
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -21,7 +22,28 @@ import pytest
 
 from app.application.services.gemini_analysis_service import GeminiAnalysisService
 from app.domain.entities.disease import Disease, Plant, Treatment, TreatmentCategory
-from app.infrastructure.external.gemini_client import GeminiClient, GeminiRequestContext, _GeminiTools
+from app.infrastructure.external.gemini_client import (
+    GeminiClient,
+    GeminiRequestContext,
+    _tools_ctx,
+    _ToolsRuntimeContext,
+    get_treatment_info,
+    get_weather,
+)
+
+
+@contextmanager
+def _active_tools(plant_repo, disease_repo, treatment_repo, weather_summary=None):
+    """Makes repositories visible to the module-level tool functions, the same way
+    GeminiClient.analyze() does for the duration of a real call."""
+    token = _tools_ctx.set(_ToolsRuntimeContext(
+        plant_repo=plant_repo, disease_repo=disease_repo,
+        treatment_repo=treatment_repo, weather_summary=weather_summary,
+    ))
+    try:
+        yield
+    finally:
+        _tools_ctx.reset(token)
 
 
 def _make_ctx() -> GeminiRequestContext:
@@ -254,7 +276,8 @@ class TestGeminiToolsEnforceBr6:
     Gemini cannot get an unverified dosage by calling the tool differently, because
     the tool itself substitutes the safe fallback string."""
 
-    def test_get_treatment_info_withholds_unverified_chemical_dosage(self):
+    @staticmethod
+    def _chemical_treatment_info(source_citation, authority_referral_only):
         plant_id = uuid4()
         disease_id = uuid4()
         plant_repo = MagicMock()
@@ -269,44 +292,37 @@ class TestGeminiToolsEnforceBr6:
             Treatment(
                 id=uuid4(), disease_id=disease_id, category=TreatmentCategory.CHEMICAL,
                 instructions="Apply 50ml/L of ProductX twice weekly.",
-                source_citation=None, authority_referral_only=False,  # NOT verified
+                source_citation=source_citation, authority_referral_only=authority_referral_only,
             ),
         ]
+        with _active_tools(plant_repo, disease_repo, treatment_repo):
+            return get_treatment_info("tomato", "early_blight")
 
-        tools = _GeminiTools(plant_repo, disease_repo, treatment_repo, weather_summary=None)
-        result = tools.get_treatment_info("tomato", "early_blight")
+    def test_get_treatment_info_withholds_unverified_chemical_dosage(self):
+        result = self._chemical_treatment_info(source_citation=None, authority_referral_only=False)
 
         assert result["found"] is True
         assert "ProductX" not in result["chemical"]["instructions"]
         assert "consult your local agricultural authority" in result["chemical"]["instructions"].lower()
 
-    def test_get_treatment_info_returns_verified_chemical_dosage(self):
-        plant_id = uuid4()
-        disease_id = uuid4()
-        plant_repo = MagicMock()
-        plant_repo.get_by_canonical_name.return_value = Plant(id=plant_id, canonical_name="tomato")
-        disease_repo = MagicMock()
-        disease_repo.get_current_by_plant_and_name.return_value = Disease(
-            id=disease_id, plant_id=plant_id, name="early_blight", disease_type="fungal",
-            description="desc", symptoms=[], causes=[],
-        )
-        treatment_repo = MagicMock()
-        treatment_repo.get_current_for_disease.return_value = [
-            Treatment(
-                id=uuid4(), disease_id=disease_id, category=TreatmentCategory.CHEMICAL,
-                instructions="Apply 50ml/L of ProductX twice weekly.",
-                source_citation="Verified: National Agricultural Extension Manual 2025",
-                authority_referral_only=False,
-            ),
-        ]
+    def test_get_treatment_info_withholds_referral_only_chemical_dosage(self):
+        # Referral-only treatments are valid to save without a citation
+        # (is_dosage_verified() is True), but their instructions must never reach Gemini.
+        result = self._chemical_treatment_info(source_citation=None, authority_referral_only=True)
 
-        tools = _GeminiTools(plant_repo, disease_repo, treatment_repo, weather_summary=None)
-        result = tools.get_treatment_info("tomato", "early_blight")
+        assert "ProductX" not in result["chemical"]["instructions"]
+        assert "consult your local agricultural authority" in result["chemical"]["instructions"].lower()
+
+    def test_get_treatment_info_returns_verified_chemical_dosage(self):
+        result = self._chemical_treatment_info(
+            source_citation="Verified: National Agricultural Extension Manual 2025",
+            authority_referral_only=False,
+        )
 
         assert result["chemical"]["instructions"] == "Apply 50ml/L of ProductX twice weekly."
 
     def test_get_weather_never_invents_data_when_unavailable(self):
         plant_repo, disease_repo, treatment_repo = _repos()
-        tools = _GeminiTools(plant_repo, disease_repo, treatment_repo, weather_summary=None)
-        result = tools.get_weather()
+        with _active_tools(plant_repo, disease_repo, treatment_repo, weather_summary=None):
+            result = get_weather()
         assert result == {"available": False}

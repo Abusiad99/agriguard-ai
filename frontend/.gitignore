@@ -5,3 +5,8 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# tsc -b output; vite.config.ts is the only config source (Vite would load a stale .js first)
+vite.config.js
+vite.config.d.ts
+*.tsbuildinfo

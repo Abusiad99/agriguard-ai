@@ -32,7 +32,6 @@ export function useAsync<T>(fetcher: () => Promise<T>, deps: React.DependencyLis
 
   useEffect(() => {
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run]);
 
   return { ...state, refetch: run };

@@ -1,0 +1,19 @@
+{
+  "_comment": "Thresholds used by the report builders, the recommendation engine and the shared weather guidance (app/application/reporting/). Values marked AgriGuard default are monitoring and reporting conventions, not agronomic prescriptions, and are labelled as such. spray_wind_min_mph / spray_wind_max_mph come from ref-spray-wind and are kept in its unit; code converts them exactly (1 mph = 1.609344 km/h) and never compares against rounded km/h values. spray_rain_probability_pct is an AgriGuard threshold: a probability at or above it counts as 'rain likely'. The weekly disease scouting cadence comes from ref-umn-prevention (configs/reports/references.json). Change these to match your extension service's advice.",
+  "rules_version": "report-rules-v3",
+  "rescan_days_disease": 7,
+  "rescan_days_healthy": 30,
+  "region_radius_cells": 2,
+  "high_risk_levels": [
+    "high",
+    "critical"
+  ],
+  "recent_positive_days": 30,
+  "close_margin_pp": 15,
+  "min_class_precision_pct": 80,
+  "spray_wind_min_mph": 3,
+  "spray_wind_max_mph": 8,
+  "spray_rain_probability_pct": 60,
+  "follow_up_gap_factor": 2,
+  "max_history_scans": 4
+}

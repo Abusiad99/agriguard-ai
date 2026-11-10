@@ -71,6 +71,122 @@ class TestAiPipelineClientWithoutTrainedModel:
             client._get_service()
 
 
+def _ensure_repo_root_on_path() -> None:
+    import sys
+    repo_root = Path(__file__).resolve().parents[3]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
+
+def _tiny_classifier(num_classes: int, favored_class: int):
+    """Small conv net whose output always favors `favored_class` (via the head bias),
+    so explainability/inference paths can run without trained weights."""
+    torch = pytest.importorskip("torch")
+    nn = torch.nn
+    model = nn.Sequential(
+        nn.Conv2d(3, 4, kernel_size=3, padding=1), nn.ReLU(),
+        nn.AdaptiveAvgPool2d(1), nn.Flatten(), nn.Linear(4, num_classes),
+    )
+    with torch.no_grad():
+        model[-1].bias.zero_()
+        model[-1].bias[favored_class] = 10.0
+    return model.eval()
+
+
+class TestGradCamHookLifecycle:
+    """The inference model is a long-lived per-process singleton, so every Grad-CAM
+    call must leave the target layer exactly as it found it."""
+
+    def test_explain_removes_its_hooks_after_each_call(self):
+        torch = pytest.importorskip("torch")
+        _ensure_repo_root_on_path()
+        from ai.explainability.gradcam import GradCAM
+
+        model = _tiny_classifier(num_classes=2, favored_class=1)
+        conv = model[0]
+        explainer = GradCAM()
+
+        for _ in range(3):
+            heatmap = explainer.explain(model, torch.rand(1, 3, 16, 16), target_class=1)
+            assert heatmap.shape == (16, 16)
+            assert len(conv._forward_hooks) == 0
+            assert len(conv._backward_hooks) == 0
+
+
+class TestAttentionRolloutOnTimmVit:
+    """timm ViTs use fused attention by default, which never materializes the
+    attention weights; the explainer must still capture real per-image attention
+    (not a fixed stand-in pattern) and leave the shared model as it found it."""
+
+    def test_rollout_uses_real_attention_and_restores_the_model(self):
+        torch = pytest.importorskip("torch")
+        timm = pytest.importorskip("timm")
+        _ensure_repo_root_on_path()
+        from ai.explainability.attention_rollout import AttentionRolloutExplainer
+
+        torch.manual_seed(0)
+        model = timm.create_model("vit_tiny_patch16_224", pretrained=False, num_classes=3).eval()
+        attention_modules = [m for m in model.modules() if hasattr(m, "fused_attn")]
+        fused_before = [m.fused_attn for m in attention_modules]
+        explainer = AttentionRolloutExplainer()
+
+        first = explainer.explain(model, torch.rand(1, 3, 224, 224), target_class=0)
+        assert len(explainer._attentions) == len(model.blocks)
+        second = explainer.explain(model, torch.rand(1, 3, 224, 224), target_class=0)
+
+        assert first.shape == (224, 224)
+        assert not np_allclose(first, second)  # depends on the image, unlike the old fixed prior
+        assert [m.fused_attn for m in attention_modules] == fused_before
+        assert all(len(m.attn_drop._forward_hooks) == 0 for m in attention_modules)
+
+    def test_model_without_attention_weights_raises_instead_of_inventing_a_heatmap(self):
+        torch = pytest.importorskip("torch")
+        _ensure_repo_root_on_path()
+        from ai.explainability.attention_rollout import AttentionRolloutExplainer
+
+        with pytest.raises(RuntimeError):
+            AttentionRolloutExplainer().explain(_tiny_classifier(2, 0), torch.rand(1, 3, 16, 16), target_class=0)
+
+
+def np_allclose(a, b) -> bool:
+    import numpy as np
+    return bool(np.allclose(a, b))
+
+
+class TestHealthyPredictionHasNoSeverity:
+    """A healthy prediction must not be graded from the Grad-CAM map of the
+    "healthy" class (which always has pixels above the threshold)."""
+
+    def test_healthy_prediction_skips_explainability_and_severity(self, tmp_path):
+        pytest.importorskip("torch")
+        transforms = pytest.importorskip("torchvision.transforms")
+        _ensure_repo_root_on_path()
+        from unittest.mock import MagicMock
+
+        from PIL import Image
+
+        from ai.data.label_encoder import LabelEncoder
+        from ai.inference.inference_service import InferenceService
+
+        service = InferenceService.__new__(InferenceService)  # skip loading artifacts from disk
+        service.label_encoder = LabelEncoder(classes=["tomato___healthy", "tomato___late_blight"])
+        service.model = _tiny_classifier(num_classes=2, favored_class=0)
+        service.device = "cpu"
+        service.eval_transform = transforms.Compose([transforms.Resize((16, 16)), transforms.ToTensor()])
+        service.explainer = MagicMock()
+
+        heatmap_path = tmp_path / "heatmap.png"
+        result = service.diagnose(Image.new("RGB", (32, 32), color=(70, 130, 60)), save_heatmap_to=heatmap_path)
+
+        assert result.condition == "healthy"
+        assert result.severity_level is None
+        assert result.affected_area_pct == 0.0
+        assert result.healthy_area_pct == 100.0
+        assert result.heatmap_overlay_path is None
+        assert not heatmap_path.exists()
+        service.explainer.explain.assert_not_called()
+
+
 class TestAiPipelineClientWithTrainedModel:
     """BLOCKED IN THIS SANDBOX: requires torch + timm (not installed, no network) and
     a trained model run (requires a real dataset placed in datasets/, which this

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { scansApi } from "@/lib/endpoints/scans";
 import { reportsApi } from "@/lib/endpoints/dashboard";
 import { PageLoader } from "@/components/ui/PageLoader";
@@ -15,15 +15,19 @@ import {
   SeverityBadge,
   AffectedAreaBar,
   WeatherCard,
-  RecommendationList,
   TreatmentSection,
+  DiseaseDescription,
   AiAnalysisSection,
   BulletList,
   SubHeading,
 } from "@/components/diagnosis/DiagnosisPanels";
 import { SEVERITY_COLOR, useSeverityLabel } from "@/components/diagnosis/severity";
+import { SegmentationPanel } from "@/components/diagnosis/SegmentationPanel";
+import { TrackPlantCard } from "@/components/diagnosis/TrackPlantCard";
+import { GenerateReportButton } from "@/components/reports/GenerateReportButton";
+import { WeatherGuidancePanel } from "@/components/diagnosis/WeatherGuidancePanel";
 import { formatDate } from "@/utils/format";
-import { ApiError } from "@/types/api";
+import { diagnosisLoadError, preventionAdvice, reportDownloadError } from "@/lib/diagnosisText";
 
 export default function DiagnosisResultPage() {
   const { id } = useParams<{ id: string }>();
@@ -36,9 +40,7 @@ export default function DiagnosisResultPage() {
 
   if (diagnosis.status === "loading") return <PageLoader label={t.common.loading} />;
   if (diagnosis.status === "error") {
-    const msg =
-      diagnosis.error instanceof ApiError && diagnosis.error.status === 403 ? t.result.noAccess : errorMessage(diagnosis.error);
-    return <ErrorState message={msg} onRetry={diagnosis.refetch} />;
+    return <ErrorState message={diagnosisLoadError(diagnosis.error, t, locale)} onRetry={diagnosis.refetch} />;
   }
 
   const d = diagnosis.data;
@@ -59,7 +61,7 @@ export default function DiagnosisResultPage() {
       link.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setDownloadError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setDownloadError(reportDownloadError(err, t, locale));
     } finally {
       setIsDownloading(false);
     }
@@ -124,6 +126,9 @@ export default function DiagnosisResultPage() {
             {d.affected_area_pct != null && d.healthy_area_pct != null && (
               <div className="mt-7 max-w-xl">
                 <AffectedAreaBar affectedPct={d.affected_area_pct} healthyPct={d.healthy_area_pct} severity={d.severity_level} />
+                {d.severity_method === "explainability_heatmap" && (
+                  <p className="mt-2 text-xs text-muted">{t.gradcam.estimateNote}</p>
+                )}
               </div>
             )}
           </div>
@@ -146,11 +151,20 @@ export default function DiagnosisResultPage() {
 
       {d.low_confidence_flag && <Alert tone="warning">{t.result.lowConfidence}</Alert>}
 
-      {d.heatmap_image_url && (
-        <div className="glass overflow-hidden rounded-panel p-2">
-          <img src={d.heatmap_image_url} alt="Highlighted diagnosis region" className="w-full rounded-[1.1rem]" />
-        </div>
+      {d.image_quality && !d.image_quality.acceptable && (
+        <Alert tone="warning" title={t.quality.title}>
+          {d.image_quality.issues.map((issue) => t.quality.issues[issue]).join(", ")}. {t.quality.caveat}
+        </Alert>
       )}
+
+      {d.heatmap_image_url && (
+        <figure className="glass overflow-hidden rounded-panel p-2">
+          <img src={d.heatmap_image_url} alt={t.gradcam.heatmapCaption} className="w-full rounded-[1.1rem]" />
+          <figcaption className="px-2 pb-1 pt-2.5 text-xs leading-relaxed text-muted">{t.gradcam.heatmapCaption}</figcaption>
+        </figure>
+      )}
+
+      <SegmentationPanel segmentation={d.segmentation} originalUrl={d.roi_image_url} />
 
       {/* ---------- Details ---------- */}
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -160,7 +174,7 @@ export default function DiagnosisResultPage() {
               <CardHeader>
                 <CardTitle icon="bug">{t.result.title}</CardTitle>
               </CardHeader>
-              <p dir="auto" className="text-start text-[0.98rem] leading-relaxed text-ink">{d.disease.description}</p>
+              <DiseaseDescription disease={d.disease} />
 
               <div className="mt-6 grid gap-6 sm:grid-cols-2">
                 {d.disease.symptoms.length > 0 && (
@@ -211,7 +225,7 @@ export default function DiagnosisResultPage() {
               <CardHeader>
                 <CardTitle icon="shieldCheck">{t.result.prevention}</CardTitle>
               </CardHeader>
-              <BulletList items={d.prevention_advice} icon="check" />
+              <BulletList items={preventionAdvice(d, t)} icon="check" />
             </Card>
           )}
         </div>
@@ -226,14 +240,12 @@ export default function DiagnosisResultPage() {
             {downloadButton}
           </div>
 
-          {d.recommendation && (
-            <Card>
-              <CardHeader>
-                <CardTitle icon="lightning">{t.result.recommendation}</CardTitle>
-              </CardHeader>
-              <RecommendationList recommendation={d.recommendation} />
-            </Card>
+          {d.viewer_is_owner !== false && (
+            <GenerateReportButton request={{ type: "diagnosis", subject_id: d.diagnosis_id }} fullWidth />
           )}
+
+          {d.viewer_is_owner !== false && <TrackPlantCard diagnosis={d} onTracked={diagnosis.refetch} />}
+
 
           {(d.recovery_probability != null || d.estimated_recovery_time) && (
             <Card>
@@ -255,11 +267,13 @@ export default function DiagnosisResultPage() {
             </Card>
           )}
 
+          {/* Weather and spraying conditions: assessed on the server from measured values
+              and verified sources (weather_guidance), shown in the reader's language. */}
           <Card>
             <CardHeader>
-              <CardTitle icon="sun">{t.result.weather}</CardTitle>
+              <CardTitle icon="sun">{d.weather_guidance ? t.result.weatherGuidance.title : t.result.weather}</CardTitle>
             </CardHeader>
-            <WeatherCard weather={d.weather} />
+            {d.weather_guidance ? <WeatherGuidancePanel guidance={d.weather_guidance} /> : <WeatherCard weather={d.weather} />}
           </Card>
 
           {d.pests_detected.length > 0 && (

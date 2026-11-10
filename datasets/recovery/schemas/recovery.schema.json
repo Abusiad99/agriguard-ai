@@ -1,0 +1,34 @@
+{
+  "description": "Longitudinal recovery dataset. Validated by ai/recovery/dataset.py.",
+  "files": {
+    "raw/plants/plants.csv": {
+      "required": ["plant_id", "crop"],
+      "optional": ["species", "region", "notes"]
+    },
+    "raw/scans/scans.csv": {
+      "required": ["scan_id", "plant_id", "scan_date", "image_file"],
+      "optional": ["disease_label", "severity_label", "affected_area_pct", "mask_file", "treatment_stage"],
+      "rules": {
+        "scan_date": "YYYY-MM-DD",
+        "image_file": "path relative to raw/scans/, must exist",
+        "mask_file": "path relative to raw/annotations/, must exist when given",
+        "severity_label": ["none", "mild", "moderate", "severe"],
+        "affected_area_pct": "number 0-100: lesion pixels / plant pixels x 100",
+        "treatment_stage": ["before_treatment", "during_treatment", "after_treatment", "unknown"]
+      }
+    },
+    "raw/treatments/treatments.csv": {
+      "required": ["treatment_id", "plant_id", "applied_on", "category", "name"],
+      "optional": ["notes"],
+      "rules": {"applied_on": "YYYY-MM-DD", "category": ["organic", "chemical", "biological", "cultural", "other"]}
+    },
+    "raw/annotations/recovery_labels.csv": {
+      "required": ["plant_id", "from_scan_id", "to_scan_id", "status"],
+      "optional": ["annotator_id", "notes"],
+      "rules": {
+        "status": ["improving", "stable", "worsening", "inconclusive"],
+        "from_scan_id/to_scan_id": "both scans belong to plant_id; from is dated before to"
+      }
+    }
+  }
+}

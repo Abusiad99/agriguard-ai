@@ -25,6 +25,7 @@ from PIL import Image
 
 from ai.config import CONFIG
 from ai.data.label_encoder import LabelEncoder
+from ai.data.label_normalizer import HEALTHY_CONDITION
 from ai.data.preprocessing import PreprocessingConfig, build_eval_transform
 from ai.explainability.factory import get_explainer, render_heatmap_overlay
 from ai.explainability.severity import estimate_severity, localize_region
@@ -122,6 +123,24 @@ class InferenceService:
         ]
 
         low_confidence = confidence < (CONFIG.inference.disease_low_confidence_threshold * 100)
+
+        if decoded["condition"] == HEALTHY_CONDITION:
+            # Nothing to localize or grade. A Grad-CAM map for the "healthy" class shows
+            # what made the leaf look healthy, and since it is min-max normalized some
+            # pixels always clear the threshold — treating that as diseased area would
+            # give every healthy leaf a severity level.
+            return DiagnosisOutput(
+                unrecognized_plant=False,
+                plant=decoded["plant"],
+                condition=decoded["condition"],
+                canonical_label=decoded["canonical"],
+                confidence_score=round(confidence, 2),
+                low_confidence_flag=low_confidence,
+                severity_level=None,
+                affected_area_pct=0.0,
+                healthy_area_pct=100.0,
+                top_k=top_k_results,
+            )
 
         # Explainability heatmap -> localization + severity (Steps 4, 5, 7).
         try:

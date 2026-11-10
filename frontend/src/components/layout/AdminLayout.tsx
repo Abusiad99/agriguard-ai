@@ -14,6 +14,7 @@ export function AdminLayout() {
     ...(hasRole("admin") ? [{ to: "/admin/users", label: t.admin.usersTitle, icon: "users" as IconName }] : []),
     { to: "/admin/diseases", label: t.admin.diseasesTitle, icon: "book" },
     { to: "/admin/treatments", label: t.admin.treatmentsTitle, icon: "beaker" },
+    { to: "/admin/models", label: t.models.title, icon: "sparkles" },
   ];
   const activeTo = tabs.find((tab) => (tab.to === "/admin" ? pathname === "/admin" : pathname.startsWith(tab.to)))?.to;
 

@@ -1,0 +1,117 @@
+{
+  "file": "weather_daily.csv",
+  "description": "Daily weather near the observation locations. Optional: missing weather lowers data completeness; it is never treated as zero.",
+  "columns": [
+    {
+      "name": "date",
+      "type": "date",
+      "required": true,
+      "description": "Day (YYYY-MM-DD, local)",
+      "unit": null,
+      "minimum": null,
+      "maximum": null,
+      "allowed": null,
+      "missing": "row rejected"
+    },
+    {
+      "name": "latitude",
+      "type": "float",
+      "required": true,
+      "description": "Station / grid-point latitude",
+      "unit": "degrees",
+      "minimum": -90,
+      "maximum": 90,
+      "allowed": null,
+      "missing": "row rejected"
+    },
+    {
+      "name": "longitude",
+      "type": "float",
+      "required": true,
+      "description": "Station / grid-point longitude",
+      "unit": "degrees",
+      "minimum": -180,
+      "maximum": 180,
+      "allowed": null,
+      "missing": "row rejected"
+    },
+    {
+      "name": "temperature_mean_c",
+      "type": "float",
+      "required": false,
+      "description": "Daily mean air temperature",
+      "unit": "degC",
+      "minimum": -60,
+      "maximum": 60,
+      "allowed": "feature left missing",
+      "missing": "row rejected"
+    },
+    {
+      "name": "temperature_min_c",
+      "type": "float",
+      "required": false,
+      "description": "Daily minimum air temperature",
+      "unit": "degC",
+      "minimum": -70,
+      "maximum": 60,
+      "allowed": "feature left missing",
+      "missing": "row rejected"
+    },
+    {
+      "name": "temperature_max_c",
+      "type": "float",
+      "required": false,
+      "description": "Daily maximum air temperature",
+      "unit": "degC",
+      "minimum": -60,
+      "maximum": 70,
+      "allowed": "feature left missing",
+      "missing": "row rejected"
+    },
+    {
+      "name": "relative_humidity_mean_pct",
+      "type": "float",
+      "required": false,
+      "description": "Daily mean relative humidity",
+      "unit": "%",
+      "minimum": 0,
+      "maximum": 100,
+      "allowed": "feature left missing",
+      "missing": "row rejected"
+    },
+    {
+      "name": "rh_hours_ge_90",
+      "type": "float",
+      "required": false,
+      "description": "Hours with relative humidity >= 90 %",
+      "unit": "hours",
+      "minimum": 0,
+      "maximum": 24,
+      "allowed": "feature left missing",
+      "missing": "row rejected"
+    },
+    {
+      "name": "precipitation_mm",
+      "type": "float",
+      "required": false,
+      "description": "Daily precipitation total",
+      "unit": "mm",
+      "minimum": 0,
+      "maximum": 1000,
+      "allowed": "feature left missing",
+      "missing": "row rejected"
+    },
+    {
+      "name": "source",
+      "type": "string",
+      "required": false,
+      "description": "Data provider",
+      "unit": null,
+      "minimum": null,
+      "maximum": null,
+      "allowed": null,
+      "missing": "ignored"
+    }
+  ],
+  "required": false
+}

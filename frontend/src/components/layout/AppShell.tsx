@@ -12,6 +12,10 @@ interface NavItem {
   to: string;
   label: string;
   icon: IconName;
+  /** Shorter label for the mobile tab bar. */
+  short?: string;
+  /** false: not in the mobile tab bar (reachable from the mobile top bar instead). */
+  mobile?: boolean;
 }
 
 /** Which nav item owns the current URL (a diagnosis detail belongs to History). */
@@ -30,11 +34,15 @@ export function AppShell() {
     { key: "dashboard", to: "/dashboard", label: t.nav.dashboard, icon: "dashboard" },
     { key: "scan", to: "/scan", label: t.nav.scan, icon: "camera" },
     { key: "history", to: "/history", label: t.nav.history, icon: "history" },
-    { key: "profile", to: "/profile", label: t.nav.profile, icon: "profile" },
+    { key: "plants", to: "/plants", label: t.nav.plants, short: t.nav.plantsShort, icon: "sprout" },
+    { key: "outbreak", to: "/outbreak", label: t.nav.outbreak, short: t.nav.outbreakShort, icon: "pin" },
+    { key: "reports", to: "/reports", label: t.nav.reports, icon: "document", mobile: false },
+    { key: "profile", to: "/profile", label: t.nav.profile, icon: "profile", mobile: false },
   ];
   if (hasRole("admin", "agronomist")) {
     navItems.push({ key: "admin", to: "/admin", label: t.nav.admin, icon: "admin" });
   }
+  const mobileItems = navItems.filter((i) => i.key !== "scan" && i.mobile !== false);
 
   // New page → start at the top (the shell itself stays mounted between routes).
   const section = pathname.split("/")[1];
@@ -48,7 +56,7 @@ export function AppShell() {
   return (
     <div className="min-h-screen">
       {/* ---------- Desktop sidebar ---------- */}
-      <aside className="glass fixed inset-y-3 start-3 z-30 hidden w-[17rem] flex-col rounded-[1.75rem] p-4 lg:flex">
+      <aside className="print:hidden glass fixed inset-y-3 start-3 z-30 hidden w-[17rem] flex-col rounded-[1.75rem] p-4 lg:flex">
         <Link to="/dashboard" className="mb-8 mt-1 flex items-center gap-3 rounded-2xl px-2 py-1">
           <LogoMark />
           <span className="font-display text-lg font-semibold tracking-tight text-ink">{t.app.name}</span>
@@ -110,7 +118,7 @@ export function AppShell() {
       </aside>
 
       {/* ---------- Mobile top bar ---------- */}
-      <header className="sticky top-0 z-30 px-3 pt-3 lg:hidden">
+      <header className="sticky top-0 z-30 px-3 pt-3 lg:hidden print:hidden">
         <div className="glass flex h-14 items-center justify-between rounded-2xl ps-2 pe-1.5">
           <Link to="/dashboard" className="flex items-center gap-2.5">
             <LogoMark className="h-9 w-9" />
@@ -119,13 +127,22 @@ export function AppShell() {
           <div className="flex items-center">
             <ThemeToggle />
             <LocaleToggle />
+            <Link to="/reports" aria-label={t.nav.reports} title={t.nav.reports}
+                  aria-current={activeKey === "reports" ? "page" : undefined}
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${activeKey === "reports" ? "text-primary" : "text-muted"}`}>
+              <Icon name="document" className="h-5 w-5" />
+            </Link>
+            <Link to="/profile" aria-label={t.nav.profile} title={t.nav.profile}
+                  aria-current={activeKey === "profile" ? "page" : undefined} className="ms-1 rounded-xl">
+              <Avatar name={user?.full_name} size="sm" />
+            </Link>
           </div>
         </div>
       </header>
 
       {/* ---------- Main content ---------- */}
-      <div className="lg:ps-[18.5rem]">
-        <main className="mx-auto max-w-6xl px-4 pb-32 pt-6 sm:px-6 sm:pt-8 lg:px-10 lg:pb-12 lg:pt-10">
+      <div className="lg:ps-[18.5rem] print:ps-0">
+        <main className="mx-auto max-w-6xl px-4 pb-32 pt-6 sm:px-6 sm:pt-8 lg:px-10 lg:pb-12 lg:pt-10 print:max-w-none print:p-0">
           <div key={section} className="animate-fade-in">
             <Outlet />
           </div>
@@ -134,11 +151,10 @@ export function AppShell() {
 
       {/* ---------- Mobile bottom bar with a raised scan button ---------- */}
       <nav
-        className="glass fixed inset-x-3 bottom-3 z-40 flex items-end justify-around rounded-[1.5rem] px-1 pb-2 pt-1.5 lg:hidden"
+        className="glass fixed inset-x-3 bottom-3 z-40 flex items-end justify-around rounded-[1.5rem] px-1 pb-2 pt-1.5 lg:hidden print:hidden"
         style={{ marginBottom: "env(safe-area-inset-bottom)" }}
       >
-        {navItems
-          .filter((i) => i.key !== "scan")
+        {mobileItems
           .slice(0, 2)
           .map((item) => (
             <MobileTab key={item.key} item={item} isActive={activeKey === item.key} />
@@ -155,8 +171,7 @@ export function AppShell() {
           </span>
           <span className={`whitespace-nowrap text-[10.5px] font-semibold ${activeKey === "scan" ? "text-primary" : "text-muted"}`}>{t.nav.scan}</span>
         </Link>
-        {navItems
-          .filter((i) => i.key !== "scan")
+        {mobileItems
           .slice(2)
           .map((item) => (
             <MobileTab key={item.key} item={item} isActive={activeKey === item.key} />
@@ -180,19 +195,20 @@ function MobileTab({ item, isActive }: { item: NavItem; isActive: boolean }) {
       >
         <Icon name={item.icon} className="h-[22px] w-[22px]" />
       </span>
-      <span className="whitespace-nowrap">{item.label}</span>
+      <span className="max-w-full truncate">{item.short ?? item.label}</span>
     </Link>
   );
 }
 
-export function Avatar({ name, size = "md" }: { name?: string | null; size?: "md" | "lg" }) {
+export function Avatar({ name, size = "md" }: { name?: string | null; size?: "sm" | "md" | "lg" }) {
   const initials = (name ?? "?")
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((p) => p.charAt(0).toUpperCase())
     .join("");
-  const dims = size === "lg" ? "h-16 w-16 text-xl rounded-[1.25rem]" : "h-10 w-10 text-sm rounded-xl";
+  const dims =
+    size === "lg" ? "h-16 w-16 text-xl rounded-[1.25rem]" : size === "sm" ? "h-9 w-9 text-xs rounded-xl" : "h-10 w-10 text-sm rounded-xl";
   return (
     <span className={`inline-flex shrink-0 items-center justify-center bg-brand font-display font-semibold text-white shadow-glow ${dims}`}>
       {initials}
