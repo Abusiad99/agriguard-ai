@@ -57,6 +57,12 @@ as `powershell -ExecutionPolicy Bypass -File scripts\<name>.ps1` (as below) inst
 of changing the system policy.
 
 ```powershell
+# 0. Clone. The first line skips 1.7 GB of training images (only needed for training).
+#    Use Git 2.45.2+; with 2.45.1, run "git restore --source=HEAD :/" in the folder if the clone stops.
+$env:GIT_LFS_SKIP_SMUDGE = "1"
+git clone https://github.com/Abusiad99/agriguard-ai.git
+cd agriguard-ai
+
 # 1. Database (once): create a role and a database, as the postgres superuser.
 #    Choose your own password instead of YOUR_DB_PASSWORD.
 psql -U postgres -c "CREATE ROLE agriguard LOGIN PASSWORD 'YOUR_DB_PASSWORD';"
@@ -181,4 +187,14 @@ their external services.
 ## Optional: Docker
 
 `docker/docker-compose.yml` still deploys the full stack (PostgreSQL, backend, NGINX,
-frontend build, optional training job). See [docker/README.md](docker/README.md).
+frontend build, optional training job). It was built and run end to end on Docker Desktop
+4.85 (November 2026). Commands and notes:
+[docs/SETUP_AND_RUN.md, section 9](docs/SETUP_AND_RUN.md#9-docker-optional); details in
+[docker/README.md](docker/README.md).
+
+```powershell
+cd docker
+Copy-Item .env.example .env; notepad .env     # set JWT_SECRET_KEY and POSTGRES_PASSWORD
+docker compose up -d --build                  # app: http://localhost  API docs: http://localhost:8000/api/docs
+docker compose down                           # stop (keeps the data)
+```

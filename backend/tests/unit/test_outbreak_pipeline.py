@@ -199,3 +199,46 @@ class TestTrainingAndPrediction:
         preprocess(root, OutbreakConfig())
         with pytest.raises(InsufficientData):
             train(root, OutbreakConfig())  # default minimums: 200 rows, 30 positives, 365 days
+
+
+class TestScanObservationDate:
+    """A located scan is counted on its UTC day, like every outbreak window (utc_today).
+    PostgreSQL returns timestamps in its session time zone; in a zone ahead of UTC a scan
+    made before UTC midnight was dated the next day and fell outside "until today"."""
+
+    def _record(self, diagnosed_at):
+        from types import SimpleNamespace
+        from uuid import uuid4
+
+        from app.application.services.outbreak_service import OutbreakService
+
+        class Repo:  # stand-in: records the observation instead of writing it
+            row = None
+
+            def observation_for_diagnosis(self, _diagnosis_id):
+                return None
+
+            def get_or_create_area(self, _cell):
+                return SimpleNamespace(id=uuid4())
+
+            def add_observation(self, row):
+                self.row = row
+                return row
+
+        repo = Repo()
+        scan = SimpleNamespace(id=uuid4(), location_lat=10.31, location_lon=20.41, predicted_condition="early_blight",
+                               unrecognized_plant=False, low_confidence_flag=False, diagnosed_at=diagnosed_at)
+        OutbreakService(repo, model_client=None, weather=None).record_scan_observation(scan, "tomato")
+        return repo.row.observed_on
+
+    def test_scan_in_a_zone_ahead_of_utc_counts_on_its_utc_day(self):
+        from datetime import datetime, timezone
+
+        riyadh = timezone(timedelta(hours=3))
+        # 01:00 on 11 Nov in UTC+3 is 22:00 on 10 Nov in UTC
+        assert self._record(datetime(2026, 11, 11, 1, 0, tzinfo=riyadh)) == date(2026, 11, 10)
+
+    def test_naive_timestamps_are_read_as_utc(self):
+        from datetime import datetime
+
+        assert self._record(datetime(2026, 11, 10, 23, 30)) == date(2026, 11, 10)

@@ -112,6 +112,12 @@ eagerly at startup per `app/main.py`'s lifespan hook).
 To use a GPU, uncomment the `deploy.resources.reservations.devices` block in
 `docker-compose.yml`'s `training` service (requires the NVIDIA Container Toolkit on the host).
 
+The `backend` image installs the **CPU-only** PyTorch wheel by default (build argument
+`TORCH_INDEX_URL`, about 2.4 GB instead of about 10 GB with CUDA): the backend service gets
+no GPU, and inference uses the same torch API either way. To build it with PyPI's default
+(CUDA) wheel instead: `docker compose build --build-arg TORCH_INDEX_URL= backend`. The
+`training` image is unchanged and keeps the CUDA build.
+
 ## 4. Database migrations
 - **Startup strategy**: `docker/scripts/backend-entrypoint.sh` runs `alembic upgrade head`
   automatically every time the `backend` container starts, before the API server launches.

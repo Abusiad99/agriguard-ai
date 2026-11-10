@@ -3,7 +3,8 @@
 This guide takes you from a fresh Windows 10/11 machine to a running AgriGuard AI: a
 FastAPI backend, a React/Vite frontend and a PostgreSQL database. Every command was run
 on Windows 11 with Windows PowerShell 5.1, Python 3.11/3.12, Node.js 22, npm 10 and
-PostgreSQL 16. Docker is **not** needed.
+PostgreSQL 16, including a complete run-through from a fresh `git clone` of GitHub's `main`.
+Docker is **not** needed (it is an optional alternative, section 9).
 
 Run all commands from the repository folder (`agriguard-ai`) unless a step says otherwise.
 
@@ -15,7 +16,7 @@ Run all commands from the repository folder (`agriguard-ai`) unless a step says 
 
 | Software | Version | Required? |
 |---|---|---|
-| Git | any recent | Yes |
+| Git | **2.45.2 or newer** (2.45.1 has a clone bug, section 2.1) | Yes |
 | Python | **3.11 or 3.12** (3.10 also works) | Yes |
 | Node.js (includes npm) | **18 or newer** (LTS recommended) | Yes |
 | PostgreSQL | **14 or newer** (16 tested) | Yes |
@@ -31,7 +32,8 @@ Run all commands from the repository folder (`agriguard-ai`) unless a step says 
 ### First-time installation
 
 ```powershell
-# 1. Get the code
+# 1. Get the code (the first line skips 1.7 GB of training images you don't need to run the app)
+$env:GIT_LFS_SKIP_SMUDGE = "1"
 git clone https://github.com/Abusiad99/agriguard-ai.git
 cd agriguard-ai
 
@@ -101,7 +103,7 @@ classifier has been trained yet (section 8).
 
 | Software | Where to get it | Notes |
 |---|---|---|
-| Git | https://git-scm.com/download/win | Default options are fine |
+| Git | https://git-scm.com/download/win | Default options are fine. Use 2.45.2 or newer (`git --version`) |
 | Python 3.12 or 3.11 | https://www.python.org/downloads/windows/ | Tick **"Add python.exe to PATH"**. Python 3.13+ is not what the scripts look for first; they choose 3.12, then 3.11, then 3.10 |
 | Node.js LTS | https://nodejs.org/ | npm is included |
 | PostgreSQL | https://www.postgresql.org/download/windows/ | Use the EDB installer. Remember the password you give the `postgres` superuser |
@@ -139,17 +141,30 @@ After changing PATH, close and reopen PowerShell (and VS Code).
 ### 2.1 Clone
 
 ```powershell
+$env:GIT_LFS_SKIP_SMUDGE = "1"     # optional: skip the 1.7 GB of training images (section 2.2)
 git clone https://github.com/Abusiad99/agriguard-ai.git
 cd agriguard-ai
 ```
 
 Use `git clone`, not GitHub's **Download ZIP**: the ZIP does not contain the Git LFS
-training images.
+training images. Everything needed to run the app (source, migrations, `configs/`, scripts,
+templates, fonts) is in the repository; nothing has to be copied from another computer.
+
+**`fatal: active post-checkout hook found during git clone`** — Git for Windows **2.45.1**
+rejects the hook Git LFS installs and stops before checking out the files. Either update Git
+(2.45.2+), or finish the checkout inside the new folder:
+
+```powershell
+cd agriguard-ai
+git restore --source=HEAD :/
+```
 
 ### 2.2 Training images (optional)
 
-The plant images in `datasets/plantwild_v2/` are stored with Git LFS. You only need them to
-**train** the classifier (section 8). To get them:
+The 11,488 plant images in `datasets/plantwild_v2/` (about 1.7 GB) are stored with Git LFS.
+You only need them to **train** the classifier (section 8). If Git LFS is installed, a normal
+clone downloads them automatically; with `GIT_LFS_SKIP_SMUDGE=1` (above) the clone gets small
+placeholder files instead. To download them later:
 
 ```powershell
 git lfs install     # once per computer
@@ -661,29 +676,67 @@ This is the normal state of a fresh clone, and it is safe:
 Docker Compose can run PostgreSQL, the backend, NGINX and a frontend build together
 (`docker/docker-compose.yml`, instructions in [docker/README.md](../docker/README.md)):
 
+First time (Docker Desktop running):
+
 ```powershell
 cd docker
 Copy-Item .env.example .env
 notepad .env          # set JWT_SECRET_KEY (48+ random characters), POSTGRES_PASSWORD, CORS_ALLOW_ORIGINS
-docker compose up --build
+docker compose up -d --build
+docker compose ps     # wait until postgres, backend and nginx show "healthy"
 ```
+
+Then open **http://localhost** (NGINX serves the app and forwards `/api`). The API is also
+published directly on http://localhost:8000 (docs: http://localhost:8000/api/docs).
+
+| Task | Command (in `docker\`) |
+|---|---|
+| Start again later | `docker compose up -d` |
+| Logs | `docker compose logs -f backend` |
+| Stop (keeps all data) | `docker compose down` |
+| Rebuild after `git pull` | `docker compose up -d --build` |
+
+Never add `-v` to `docker compose down` unless you mean to **delete** the database and
+uploaded files: it removes the data volumes.
 
 Notes:
 
 - `docker\.env` is separate from the root `.env` and is also git-ignored. The compose file
-  refuses to start without `JWT_SECRET_KEY`.
+  refuses to start without `JWT_SECRET_KEY`, and with `APP_ENV=production` (the default
+  there) the backend refuses the example value or anything shorter than 32 characters.
 - The stack publishes ports 80 (NGINX), 8000 (backend) and 5432 (PostgreSQL). Stop a local
-  PostgreSQL first, or change the ports, if they clash.
-- The backend container runs `alembic upgrade head` on every start.
-- The image installs the AI requirements, so the first build downloads PyTorch (several GB).
+  PostgreSQL (or the native dev servers) first, or change the ports, if they clash.
+- The backend container waits for PostgreSQL and runs `alembic upgrade head` on every start.
+- The backend image uses the **CPU-only** PyTorch build (about 2.4 GB image; the backend
+  container gets no GPU). For the CUDA build:
+  `docker compose build --build-arg TORCH_INDEX_URL= backend`.
 - Trained models live in the `artifacts_data` Docker volume, which the optional `training`
   service writes and the backend reads. Without a model there, scans return 503
   (see docker/README.md).
 
-**Verification status:** the compose file passes `docker compose config`, but the images
-have **not** been built or run as part of preparing this guide: Docker Desktop on the test
-machine failed to start (stale `%LOCALAPPDATA%\Docker\run\dockerInference` socket file).
-Treat the Docker deployment as unverified until you have run it.
+**Verified (11 November 2026)** with Docker Desktop 4.85 / Engine 29.6.2, in an isolated
+compose project:
+
+- Images: both build.
+- Startup: PostgreSQL, the backend and NGINX all become healthy.
+- Migrations: run from empty to `0008`; `configs/` is present in the image.
+- Through NGINX:
+  - the frontend loads in English and Arabic;
+  - sign-up and login work;
+  - an Arabic report and its PDF are generated;
+  - corrupt uploads are rejected, and a real photo returns the documented 503 (no model);
+  - forged media links are refused;
+  - weather is fetched from inside the container.
+- With the example JWT secret, the backend refuses to start.
+
+Two fixes came out of this run:
+
+- **The backend container could not start on Windows clones.** Its start script was checked
+  out with CRLF line endings (`exec ... backend-entrypoint.sh: no such file or directory`).
+  Fixed by `.gitattributes` and by the Dockerfile.
+- **NGINX was always reported unhealthy.** Its healthcheck asked `localhost` over IPv6.
+
+If you built an older checkout, rebuild with `docker compose up -d --build`.
 
 ---
 
@@ -766,6 +819,11 @@ tests use mocks: they never call Google or Open-Meteo.
 | PDF report fails or Arabic shows boxes | Missing `reportlab`, `arabic-reshaper` or `python-bidi` | `logs\backend-dev.err.log` | Re-run `scripts\install-backend.ps1` |
 | Old photo links `/storage/...` return 404 | Photos are private now and use signed links | — | Expected; links in the app work |
 | PowerShell script errors in a non-English path | Very long or unusual path | — | Clone to a short path such as `C:\dev\agriguard-ai`, or set `$env:AGRIGUARD_VENV` |
+| `git clone` ends with `active post-checkout hook found` | Git for Windows 2.45.1 bug with Git LFS | `git --version` | Update Git, or run `git restore --source=HEAD :/` in the cloned folder (section 2.1) |
+| Clone downloads gigabytes | Git LFS fetches the 1.7 GB of training images | — | Clone with `$env:GIT_LFS_SKIP_SMUDGE = "1"` (section 2.1) |
+| Docker: backend restarts with `exec /usr/local/bin/backend-entrypoint.sh: no such file or directory` | Image built from an older checkout whose script had Windows line endings | `docker compose logs backend` | `git pull`, then `docker compose up -d --build` |
+| Docker: `port is already allocated` (80, 8000 or 5432) | The native dev servers or a local PostgreSQL use the same port | `Get-NetTCPConnection -LocalPort 5432 -State Listen` | Stop the other service, or change the published port in `docker-compose.yml` |
+| Docker Desktop shows an error and quits: `remove ...\Docker\run\dockerInference` (or `...\docker-secrets-engine\engine.sock`): `The file cannot be accessed by the system` | On some Windows builds Docker's leftover socket files cannot be deleted | Docker Desktop log in `%LOCALAPPDATA%\Docker\log\host\` | Quit Docker Desktop, rename the folders `%LOCALAPPDATA%\Docker\run` and `%LOCALAPPDATA%\docker-secrets-engine` (for example to `run.old`), start Docker Desktop again. Don't use **Reset to factory defaults**: it deletes all images and volumes |
 
 Never drop or recreate your real database as a troubleshooting step. Use `check-db.ps1`
 (read-only) and the logs first.

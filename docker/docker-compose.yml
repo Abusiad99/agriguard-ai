@@ -157,7 +157,10 @@ services:
         ipv4_address: ${AGRIGUARD_NGINX_IP:-172.28.0.10}
 
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      # 127.0.0.1, not "localhost": in the Alpine image localhost resolves to ::1 first,
+      # NGINX listens on IPv4 only, and busybox wget does not fall back, so the check
+      # would always fail and mark a working container unhealthy.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
       interval: 30s
       timeout: 5s
       retries: 3

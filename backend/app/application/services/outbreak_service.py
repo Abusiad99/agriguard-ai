@@ -72,7 +72,11 @@ class OutbreakService:
         cell = grid.cell_for(float(diagnosis.location_lat), float(diagnosis.location_lon), settings.outbreak_grid_resolution_deg)
         area = self.repo.get_or_create_area(cell)
         positive = diagnosis.predicted_condition != "healthy"
-        observed = (diagnosis.diagnosed_at or datetime.now(timezone.utc)).date()
+        # Dated by the scan's UTC day, like every outbreak window (utc_today). PostgreSQL
+        # returns timestamps in its session time zone, so in a zone ahead of UTC a scan made
+        # before UTC midnight would otherwise land on the next day and drop out of a window
+        # that ends today.
+        observed = _aware(diagnosis.diagnosed_at or datetime.now(timezone.utc)).astimezone(timezone.utc).date()
         return self.repo.add_observation(DiseaseObservationModel(
             area_id=area.id, source="app_scan", diagnosis_id=diagnosis.id, crop=crop,
             disease=diagnosis.predicted_condition, is_positive=positive, inspected_count=1,
