@@ -747,73 +747,282 @@ This is the normal state of a fresh clone, and it is safe:
 
 ## 9. Docker (optional)
 
-Docker Compose can run PostgreSQL, the backend, NGINX and a frontend build together
-(`docker/docker-compose.yml`, instructions in [docker/README.md](../docker/README.md)):
+Docker Compose runs PostgreSQL, the backend, NGINX and a one-time frontend build together,
+plus Redis (optional) and a training job (on demand). It is an alternative to sections 3 to 6;
+you don't need both. Technical details (start-up order, health checks, training, production
+notes) are in [docker/README.md](../docker/README.md).
 
-First time (Docker Desktop running):
+### 9.1 Before you run any Docker command
+
+- **Run every `docker compose` command from the repository's `docker` folder**
+  (`agriguard-ai\docker`) and don't add `-p` / `--project-name`. Compose names the project
+  after that folder (`docker`) and the data volumes after the project (`docker_postgres_data`,
+  ...). Under another project name Compose would create new, **empty** volumes, and the app
+  would start with an empty database.
+- **Your data lives in the volumes, not in the containers.** Containers and the network can
+  be removed and recreated at any time; the volumes must never be deleted (section 9.5).
+- **Configuration is `docker\.env`**, separate from the root `.env` and also ignored by Git.
+- **Redis is optional.** Nothing in the application uses it yet. The commands below include
+  `--profile redis` so that Redis is started, stopped and upgraded together with the rest of
+  the stack. Without `--profile redis`, Compose leaves the Redis container as it is:
+  `stop` does not stop it, and `up -d` does not start it.
+
+| Service | Container | Volume (what it holds) | Port |
+|---|---|---|---|
+| `postgres` | `agriguard_postgres` | `docker_postgres_data` (the database) | 5432 |
+| `redis` (profile `redis`) | `agriguard_redis` | `docker_redis_data` | — |
+| `backend` | `agriguard_backend` | `docker_storage_data` (scan photos, heatmaps, PDF reports), `docker_artifacts_data` (trained models), `docker_logs_data` | 8000 |
+| `frontend` (one-time build, then exits) | `agriguard_frontend_build` | `docker_frontend_dist` (the built web app) | — |
+| `nginx` | `agriguard_nginx` | `docker_frontend_dist` (read-only) and `docker\nginx\nginx.conf` | 80 |
+| `training` (profile `training`, on demand) | `agriguard_training` | `docker_artifacts_data`, `docker_training_logs`, `docker_training_cache`, and `datasets\` read-only | — |
+
+The network is `docker_agriguard_network`, address range `172.28.0.0/16`
+(`AGRIGUARD_SUBNET`), with NGINX at `172.28.0.10` (`AGRIGUARD_NGINX_IP`).
+
+### 9.2 First-time installation
+
+Use this only when there is no AgriGuard Docker installation on the computer yet
+(`docker volume ls --filter name=docker_` lists nothing). If there is one, go to 9.4.
+
+Start Docker Desktop, then:
 
 ```powershell
-cd docker
+cd agriguard-ai\docker
 Copy-Item .env.example .env
-notepad .env          # set JWT_SECRET_KEY (48+ random characters), POSTGRES_PASSWORD, CORS_ALLOW_ORIGINS
-docker compose up -d --build
-docker compose ps     # wait until postgres, backend and nginx show "healthy"
+notepad .env
 ```
 
-Then open **http://localhost** (NGINX serves the app and forwards `/api`). The API is also
-published directly on http://localhost:8000 (docs: http://localhost:8000/api/docs).
+Set in `docker\.env`:
 
-| Task | Command (in `docker\`) |
+| Setting | Value |
 |---|---|
-| Start again later | `docker compose up -d` |
-| Logs | `docker compose logs -f backend` |
-| Stop (keeps all data) | `docker compose down` |
-| Rebuild after `git pull` | `docker compose up -d --build` |
+| `JWT_SECRET_KEY` | 48 or more random characters; the command below prints a suitable value |
+| `POSTGRES_PASSWORD` | A password you choose. It is applied **once**, when the database volume is created; changing it later does not change the database's password (9.6) |
+| `CORS_ALLOW_ORIGINS` | Keep `["http://localhost"]` unless you open the app under another address |
+| `GEMINI_API_KEY` | Optional (section 7.1) |
 
-Never add `-v` to `docker compose down` unless you mean to **delete** the database and
-uploaded files: it removes the data volumes.
+This prints a random 96-character value for `JWT_SECRET_KEY` (Windows PowerShell 5.1 and 7):
 
-Notes:
+```powershell
+$b = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { $_.ToString("x2") })
+```
 
-- `docker\.env` is separate from the root `.env` and is also git-ignored. The compose file
-  refuses to start without `JWT_SECRET_KEY`, and with `APP_ENV=production` (the default
-  there) the backend refuses the example value or anything shorter than 32 characters.
-- The stack publishes ports 80 (NGINX), 8000 (backend) and 5432 (PostgreSQL). Stop a local
-  PostgreSQL (or the native dev servers) first, or change the ports, if they clash.
-- The backend container waits for PostgreSQL and runs `alembic upgrade head` on every start.
-  Before you rebuild a stack whose database holds data, back it up (section 3.9, with
-  `-Container agriguard_postgres`). An image built from an older checkout cannot run against a
-  database that a newer version has already migrated: rebuild with `docker compose up -d --build`.
-- The backend image uses the **CPU-only** PyTorch build (about 2.4 GB image; the backend
-  container gets no GPU). For the CUDA build:
-  `docker compose build --build-arg TORCH_INDEX_URL= backend`.
-- Trained models live in the `artifacts_data` Docker volume, which the optional `training`
-  service writes and the backend reads. Without a model there, scans return 503
-  (see docker/README.md).
+Build and start (the first build downloads several GB and takes a while):
 
-**Verified (11 November 2026)** with Docker Desktop 4.85 / Engine 29.6.2, in an isolated
-compose project:
+```powershell
+docker compose --profile redis up -d --build
+docker compose --profile redis ps -a
+```
 
-- Images: both build.
-- Startup: PostgreSQL, the backend and NGINX all become healthy.
-- Migrations: run from empty to `0008`; `configs/` is present in the image.
-- Through NGINX:
-  - the frontend loads in English and Arabic;
-  - sign-up and login work;
-  - an Arabic report and its PDF are generated;
-  - corrupt uploads are rejected, and a real photo returns the documented 503 (no model);
-  - forged media links are refused;
-  - weather is fetched from inside the container.
-- With the example JWT secret, the backend refuses to start.
+Repeat the `ps -a` command until `agriguard_postgres`, `agriguard_redis`, `agriguard_backend`
+and `agriguard_nginx` show `(healthy)` and `agriguard_frontend_build` shows `Exited (0)`.
+Then open **http://localhost**. The API is also published on http://localhost:8000
+(documentation: http://localhost:8000/api/docs).
 
-Two fixes came out of this run:
+### 9.3 Daily start and stop
 
-- **The backend container could not start on Windows clones.** Its start script was checked
-  out with CRLF line endings (`exec ... backend-entrypoint.sh: no such file or directory`).
-  Fixed by `.gitattributes` and by the Dockerfile.
-- **NGINX was always reported unhealthy.** Its healthcheck asked `localhost` over IPv6.
+From `agriguard-ai\docker`:
 
-If you built an older checkout, rebuild with `docker compose up -d --build`.
+```powershell
+docker compose --profile redis up -d
+```
+
+```powershell
+docker compose --profile redis stop
+```
+
+`stop` only stops the containers; nothing is removed, and the next `up -d` continues where you
+left off. The containers use the restart policy `unless-stopped`: if they were running when
+Docker Desktop quit, they start again with Docker Desktop; after `stop` they stay stopped.
+
+Logs: `docker compose logs -f backend` (Ctrl+C ends the display, not the backend).
+
+### 9.4 Upgrading an existing installation
+
+Use this when an AgriGuard Docker installation with data already exists and you want to run
+newer code. It reuses every volume. The new backend migrates the database by itself
+(`alembic upgrade head` at start), so the procedure takes a backup first.
+
+Before you start:
+
+- Find out whether your network is from an older compose file:
+
+  ```powershell
+  docker network inspect docker_agriguard_network --format "{{range .IPAM.Config}}{{.Subnet}}{{end}}"
+  ```
+
+  Anything other than `172.28.0.0/16` (or your own `AGRIGUARD_SUBNET`) means Compose will
+  recreate the network during the upgrade. The procedure below handles both cases the same way.
+- Keep your `docker\.env`. It holds your secrets and is not touched by `git pull`. Compare
+  it with `docker\.env.example` and add new settings you need.
+- If your `docker\.env` has no `POSTGRES_PASSWORD` line, your database was created with the
+  default password `agriguard`, and the current compose file uses the same default: leave it
+  that way. If you add the line, its value must be the password the database already has.
+
+**Why every container is recreated.** Since November 2026 (commit `b8a04a6`) the compose
+file gives its network a fixed address range (`172.28.0.0/16`), so that NGINX has a fixed
+address the backend can trust. An installation created with an older compose file has a
+network with an automatically chosen range, so Compose deletes and recreates the network
+during the upgrade.
+A plain `docker compose up -d` recreates only the containers whose image or settings changed
+(backend, frontend, NGINX). PostgreSQL and Redis use the same public images and settings as
+before, so Compose keeps their old containers and only reattaches them to the new network,
+**without the names `postgres` and `redis`** that the backend uses to reach them. The backend
+then cannot find the database (9.6). The same happens when the old containers were created
+from another copy of the repository. `up -d --force-recreate` creates every container anew,
+attached under its proper name. Their data is in the named volumes, which the new containers
+reuse.
+
+**Step 1: Update the code.** This changes no container and no data.
+
+```powershell
+cd agriguard-ai
+git status
+git log -1 --oneline
+git pull --ff-only
+cd docker
+```
+
+`git status` should list no changes of yours; write down the commit that `git log` prints, in
+case you want to go back. If the installation was built from a downloaded ZIP instead of a
+clone, clone the repository (section 2.1), copy your `docker\.env` into its `docker` folder and
+continue there: the project name, and with it the volumes, stays `docker`.
+
+**Step 2: Build the new images.** The running installation keeps working meanwhile.
+
+```powershell
+docker compose --profile redis build
+```
+
+**Step 3: Stop the old stack.** From here on nothing writes to the database.
+
+```powershell
+docker compose --profile redis stop
+```
+
+**Step 4: Back up the database.** Start only PostgreSQL, write the backup inside the
+container, check it, copy it to `agriguard-backups` in your user folder and remove the copy
+inside the container:
+
+```powershell
+docker compose start postgres
+docker compose exec postgres pg_dump -U agriguard -d agriguard --format=custom --file /tmp/agriguard-upgrade.dump
+docker compose exec postgres pg_restore --list /tmp/agriguard-upgrade.dump | Select-String "TABLE DATA"
+New-Item -ItemType Directory -Force "$HOME\agriguard-backups" | Out-Null
+docker compose cp postgres:/tmp/agriguard-upgrade.dump "$HOME\agriguard-backups\agriguard-before-upgrade-$(Get-Date -Format yyyyMMdd-HHmm).dump"
+docker compose exec postgres rm /tmp/agriguard-upgrade.dump
+Get-ChildItem "$HOME\agriguard-backups"
+```
+
+The `pg_restore --list` line must print one `TABLE DATA` line per table (29 for a database at
+revision `0008`) and no error. **If any of these commands fails, stop here**: the old
+installation is unchanged, and `docker compose --profile redis up -d` starts it again. With the
+native setup (section 4) and a root `.env` pointing at this database,
+`powershell -ExecutionPolicy Bypass -File scripts\backup-db.ps1 -Container agriguard_postgres`
+does the same in one command. How to restore a backup: section 3.9.
+
+**Step 5: Recreate the containers and start the complete stack.**
+
+```powershell
+docker compose --profile redis up -d --force-recreate
+```
+
+Every container, PostgreSQL and Redis included, is replaced by a new one built from the new
+images and settings and attached to the same volumes. The backend applies any new database
+migrations while it starts.
+
+**Step 6: Verify.**
+
+```powershell
+docker compose --profile redis ps -a
+docker compose exec postgres psql -U agriguard -d agriguard -c "SELECT version_num FROM alembic_version;"
+Invoke-RestMethod http://localhost/health
+docker volume ls --filter name=docker_
+```
+
+| Check | Expected |
+|---|---|
+| `ps -a` | `agriguard_postgres`, `agriguard_redis`, `agriguard_backend`, `agriguard_nginx` show `(healthy)`; `agriguard_frontend_build` shows `Exited (0)`. Health checks need up to a minute after the start |
+| Database revision | The newest migration in `backend\app\infrastructure\db\migrations\versions` (currently `0008`) |
+| `/health` | `status: ok`, `database: ok` (`ai_service: degraded` only means that no trained model is in `docker_artifacts_data`) |
+| Volumes | The same `docker_...` volumes as before the upgrade |
+
+Then sign in at http://localhost and check that your history is there.
+
+If a check fails, **don't delete anything**: see 9.6. Keep the backup from step 4 until you have
+checked the new version. Going back to the old version needs that backup as well as the old
+commit from step 1: once the new backend has migrated the database, the old backend no longer
+starts on it (its `alembic upgrade head` does not know the new revision).
+
+### 9.5 Which commands are safe
+
+| Command (from `agriguard-ai\docker`) | What it does | Your data |
+|---|---|---|
+| `docker compose --profile redis stop` | Stops the containers. Containers, network and volumes stay | Kept |
+| `docker compose --profile redis up -d` | Starts the stack; recreates only containers whose image or settings changed | Kept |
+| `docker compose --profile redis up -d --force-recreate` | Replaces every container with a new one and attaches the same volumes | Kept |
+| `docker compose --profile redis down` | Removes the containers and the network. Not needed for an upgrade | Kept |
+| `docker compose down -v` | **Deletes the volumes**: database, scan photos, reports, trained models | **Deleted** |
+| `docker volume rm ...`, `docker volume prune`, `docker system prune --volumes` | **Delete volumes** | **Deleted** |
+| Docker Desktop: deleting a volume, *Clean / Purge data*, *Reset to factory defaults* | **Delete volumes** (the last two delete all of Docker's data) | **Deleted** |
+| `alembic downgrade ...` (also via `docker compose exec backend`), `scripts\migrate.ps1 -Action downgrade`, `DROP DATABASE`, `DROP TABLE` | **Remove tables and columns, with their data** | **Deleted** |
+
+**Never use the commands in the last four rows during a normal upgrade.** None of them is
+needed to fix an upgrade problem, and none of them can be undone without a backup.
+
+### 9.6 Troubleshooting after an upgrade
+
+**The backend stays unhealthy and its log says `could not translate host name "postgres"`**
+(or `"redis"`). NGINX then stays `Created`, and `up -d` ends with
+`dependency failed to start: container agriguard_backend is unhealthy`.
+
+```powershell
+docker compose logs --tail 30 backend
+docker inspect (docker compose ps -q postgres) --format "{{range .NetworkSettings.Networks}}{{.Aliases}}{{end}}"
+```
+
+The second command prints the names under which the database container is reachable. A list
+without `postgres` (for example `[]`) confirms the cause described in 9.4: the stack was
+started with a plain `up -d` after the network changed, and the old PostgreSQL and Redis
+containers were reused. Fix it by recreating the containers; the volumes are reused:
+
+```powershell
+docker compose --profile redis up -d --force-recreate
+```
+
+Never delete the network, the volumes or the database to fix this.
+
+| Backend log says | Cause | Fix |
+|---|---|---|
+| `password authentication failed for user "agriguard"` | `POSTGRES_PASSWORD` in `docker\.env` differs from the password the database got when its volume was created | Put the database's actual password in `docker\.env` (the old default is `agriguard`), then `docker compose --profile redis up -d --force-recreate`. Don't recreate the volume |
+| `Refusing to start: JWT_SECRET_KEY must be a random value of at least 32 characters` | `APP_ENV=production` (the default) with the example secret or one shorter than 32 characters | Set a new secret (9.2), then `docker compose --profile redis up -d --force-recreate`. Everyone has to sign in again; no data is lost |
+| `Database not ready (attempt 30/30)` with another error | PostgreSQL is not running or not healthy | `docker compose logs --tail 50 postgres` |
+
+| Compose says | Cause | Fix |
+|---|---|---|
+| `Pool overlaps with other one on this address space` | `172.28.0.0/16` is already used by another Docker network on this computer | Choose a free range: set `AGRIGUARD_SUBNET` and `AGRIGUARD_NGINX_IP` (an address inside it) together in `docker\.env` |
+| `port is already allocated` | The native dev servers or a local PostgreSQL use port 80, 8000 or 5432 | `powershell -ExecutionPolicy Bypass -File scripts\stop-dev.ps1`, or stop the local PostgreSQL service |
+| `JWT_SECRET_KEY must be set` | `docker\.env` is missing, or it is in the wrong folder | It must be `agriguard-ai\docker\.env` |
+
+### 9.7 Verified
+
+- **13 November 2026, upgrade (9.4), first-time installation (9.2) and daily commands (9.3):**
+  every command was run as written, in a separate Compose project, on Docker Desktop 4.85 /
+  Engine 29.6.2 (only the backup folder, the published port and the volume-name prefix were
+  the test project's own). The upgrade started from an installation made with the compose file of
+  commit `ebc7cde` (August 2026, automatic network range), holding a database row and a Redis
+  key. A plain `up -d` reproduced the failure in 9.6; `up -d --force-recreate` fixed it. The
+  full procedure ended with every container healthy, the database at `0008`, the backup
+  restorable, and the row and key from before the upgrade still there. The four commands
+  marked "Kept" in 9.5 were run the same way and kept the data; the destructive ones were
+  deliberately not run.
+- **13 November 2026:** a real installation was upgraded from `ebc7cde` to `4906fcf`. Its eight
+  volumes and all database records were kept.
+- **11 November 2026:** both images build; PostgreSQL, the backend and NGINX become healthy;
+  migrations run from empty to `0008`; through NGINX the frontend loads in English and Arabic,
+  sign-up, login, an Arabic report and its PDF work, corrupt uploads are rejected, forged media
+  links are refused and weather is fetched; with the example JWT secret the backend refuses to
+  start.
 
 ---
 
@@ -898,8 +1107,9 @@ tests use mocks: they never call Google or Open-Meteo.
 | PowerShell script errors in a non-English path | Very long or unusual path | — | Clone to a short path such as `C:\dev\agriguard-ai`, or set `$env:AGRIGUARD_VENV` |
 | `git clone` ends with `active post-checkout hook found` | Git for Windows 2.45.1 bug with Git LFS | `git --version` | Update Git, or run `git restore --source=HEAD :/` in the cloned folder (section 2.1) |
 | Clone downloads gigabytes | Git LFS fetches the 1.7 GB of training images | — | Clone with `$env:GIT_LFS_SKIP_SMUDGE = "1"` (section 2.1) |
-| Docker: backend restarts with `exec /usr/local/bin/backend-entrypoint.sh: no such file or directory` | Image built from an older checkout whose script had Windows line endings | `docker compose logs backend` | `git pull`, then `docker compose up -d --build` |
-| Docker: `port is already allocated` (80, 8000 or 5432) | The native dev servers or a local PostgreSQL use the same port | `Get-NetTCPConnection -LocalPort 5432 -State Listen` | Stop the other service, or change the published port in `docker-compose.yml` |
+| Docker: backend restarts with `exec /usr/local/bin/backend-entrypoint.sh: no such file or directory` | Image built from an older checkout whose script had Windows line endings | `docker compose logs backend` | Upgrade as in section 9.4 (new code, new images) |
+| Docker: after an upgrade the backend stays unhealthy and its log says `could not translate host name "postgres"` | The old PostgreSQL and Redis containers were reused on a recreated network | `docker compose logs --tail 30 backend` | `docker compose --profile redis up -d --force-recreate` in `docker\` (section 9.6). Never delete volumes or the database to fix it |
+| Docker: `port is already allocated` (80, 8000 or 5432) | The native dev servers or a local PostgreSQL use the same port | `Get-NetTCPConnection -LocalPort 5432 -State Listen` | Stop the other service (`scripts\stop-dev.ps1` for the native servers) |
 | Docker Desktop shows an error and quits: `remove ...\Docker\run\dockerInference` (or `...\docker-secrets-engine\engine.sock`): `The file cannot be accessed by the system` | On some Windows builds Docker's leftover socket files cannot be deleted | Docker Desktop log in `%LOCALAPPDATA%\Docker\log\host\` | Quit Docker Desktop, rename the folders `%LOCALAPPDATA%\Docker\run` and `%LOCALAPPDATA%\docker-secrets-engine` (for example to `run.old`), start Docker Desktop again. Don't use **Reset to factory defaults**: it deletes all images and volumes |
 
 Never drop or recreate your real database as a troubleshooting step. Use `check-db.ps1`

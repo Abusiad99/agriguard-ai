@@ -44,7 +44,7 @@ Compose remains available as an optional deployment method; see
 |---|---|
 | Install and run the app for the first time (Windows) | **[docs/SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md)** |
 | Add my datasets and train the models | **[DATASET_SETUP_GUIDE.md](DATASET_SETUP_GUIDE.md)** |
-| Run it with Docker instead | [docs/SETUP_AND_RUN.md, section 9](docs/SETUP_AND_RUN.md#9-docker-optional) |
+| Run it with Docker instead, or upgrade an existing Docker installation | [docs/SETUP_AND_RUN.md, section 9](docs/SETUP_AND_RUN.md#9-docker-optional) |
 
 After the first-time setup, these are the commands you use (from the repository folder):
 
@@ -79,8 +79,8 @@ script, git-ignored; never commit it). The settings are explained in
 
 ## Optional: Docker
 
-`docker/docker-compose.yml` still deploys the full stack (PostgreSQL, backend, NGINX,
-frontend build, optional training job). It was built and run end to end on Docker Desktop
-4.85 (November 2026). Commands and notes:
-[docs/SETUP_AND_RUN.md, section 9](docs/SETUP_AND_RUN.md#9-docker-optional); details in
+`docker/docker-compose.yml` deploys the full stack (PostgreSQL, backend, NGINX, frontend
+build, optional Redis and training job). First-time installation, daily start and stop, the
+safe upgrade procedure for an existing installation, and which commands would delete data:
+[docs/SETUP_AND_RUN.md, section 9](docs/SETUP_AND_RUN.md#9-docker-optional). Container details:
 [docker/README.md](docker/README.md).

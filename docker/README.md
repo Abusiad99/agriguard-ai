@@ -1,9 +1,13 @@
 # AgriGuard AI — Docker Deployment Guide (optional)
 
 > **Docker is optional.** Development, testing and running the app work natively on
-> Windows without Docker — see the root [README.md](../README.md). This guide covers
-> the optional containerized deployment (PostgreSQL, backend, NGINX, frontend build,
-> training job).
+> Windows without Docker — see the root [README.md](../README.md).
+>
+> **Installing, starting and stopping, and upgrading an existing installation** (with the
+> backup, which commands are safe, and troubleshooting) are in one place:
+> [docs/SETUP_AND_RUN.md, section 9](../docs/SETUP_AND_RUN.md#9-docker-optional). This page is
+> the technical reference for the containers (PostgreSQL, backend, NGINX, frontend build,
+> optional Redis, training job).
 
 > ⚠️ **مهم قبل التحميل — هذا المشروع يستخدم Git LFS**
 >
@@ -50,17 +54,14 @@
   correctly even without a trained model (see `app/main.py`'s startup lifecycle, which logs a
   warning rather than failing to boot).
 
-## 2. First-time setup
-```bash
-cd docker
-cp .env.example .env
-# Edit docker/.env: set JWT_SECRET_KEY (required — the compose file will refuse to start
-# without it), POSTGRES_PASSWORD, and CORS_ALLOW_ORIGINS for your frontend's origin.
-# Compose reads .env from this directory; the repository-root .env is the separate
-# native-development configuration and is not used here.
-
-docker compose up --build
-```
+## 2. How the stack starts
+Run every `docker compose` command from this folder (`agriguard-ai\docker`), without `-p`:
+the project name `docker` comes from the folder and decides the volume names
+(`docker_postgres_data`, ...). Compose reads `docker\.env` from here; the repository-root
+`.env` is the separate native-development configuration and is not used. First-time
+installation: [SETUP_AND_RUN 9.2](../docs/SETUP_AND_RUN.md#92-first-time-installation).
+Upgrading an installation that already holds data:
+[SETUP_AND_RUN 9.4](../docs/SETUP_AND_RUN.md#94-upgrading-an-existing-installation).
 
 **Networking.** The compose network uses a fixed subnet (`AGRIGUARD_SUBNET`, default
 `172.28.0.0/16`) and NGINX a fixed address in it (`AGRIGUARD_NGINX_IP`, default
@@ -74,8 +75,8 @@ Linux host NGINX sees real client addresses.
 This starts, in dependency order (via `depends_on` + `condition: service_healthy` /
 `condition: service_completed_successfully`):
 1. **postgres** (PostgreSQL 16) — healthcheck: `pg_isready`
-2. *(optional)* **redis** (Redis 7) — only with `docker compose --profile redis up`;
-   nothing in the application connects to it yet
+2. *(optional)* **redis** (Redis 7) — only with `--profile redis` (the commands in
+   SETUP_AND_RUN section 9 include it); nothing in the application connects to it yet
 3. **backend** (FastAPI) — waits for Postgres to be *reachable* (not just "started"; see
    `docker/scripts/backend-entrypoint.sh`), runs `alembic upgrade head`, then starts
    `uvicorn` with 4 workers. Healthcheck: `GET /health`.
@@ -92,8 +93,8 @@ The full app is reachable at `http://localhost/` (frontend, via NGINX), with the
 OpenAPI docs: `http://localhost:8000/api/docs`.
 
 To rebuild only the frontend after a source change (without restarting the whole stack):
-```bash
-docker compose up --build frontend
+```powershell
+docker compose up -d --build frontend
 docker compose restart nginx   # pick up the freshly-populated frontend_dist volume
 ```
 
@@ -130,12 +131,16 @@ no GPU, and inference uses the same torch API either way. To build it with PyPI'
   # review the generated migration, then:
   alembic upgrade head
   ```
-- **Manual migration commands** inside a running container:
-  ```bash
+- **Before a container start that brings new migrations** (an upgrade), back up the database:
+  [SETUP_AND_RUN 9.4](../docs/SETUP_AND_RUN.md#94-upgrading-an-existing-installation), step 4.
+- **Read-only migration commands** inside the running backend container:
+  ```powershell
   docker compose exec backend alembic current
   docker compose exec backend alembic history
-  docker compose exec backend alembic downgrade -1
   ```
+- `docker compose exec backend alembic downgrade -1` **deletes data**: it drops the tables and
+  columns the newest migration added, with their contents. It is never part of an upgrade or of
+  fixing one; use it only on a database you have backed up and are prepared to lose data in.
 
 ## 5. Health checks
 | Service | Check | Interval |
@@ -144,7 +149,7 @@ no GPU, and inference uses the same torch API either way. To build it with PyPI'
 | redis (optional profile) | `redis-cli ping` | 10s |
 | backend | `curl -f http://localhost:8000/health` | 30s |
 | frontend | (one-shot build; `service_completed_successfully` gates nginx startup) | n/a |
-| nginx | `wget --spider http://localhost/health` | 30s |
+| nginx | `wget -q --spider http://127.0.0.1/health` | 30s |
 
 `GET /health` returns `{"status", "database", "cache", "ai_service"}` — `database: "down"`
 returns HTTP 503 (used by the healthcheck); `ai_service: "degraded"` means no trained model
@@ -162,9 +167,12 @@ is loaded yet but the rest of the API is fully functional.
   — see `.gitignore`/`.dockerignore`). In a real production deployment, prefer your
   orchestrator's secret store (Docker Swarm secrets, Kubernetes Secrets, or a cloud secrets
   manager) over a plain `.env` file.
-- **Scaling**: the `backend` service is stateless (NFR-SCALE-1) — scale horizontally with
-  `docker compose up --scale backend=3`; NGINX's `upstream backend_upstream { server
-  backend:8000; }` automatically round-robins across replicas via Docker's embedded DNS.
+- **Scaling**: the `backend` service is stateless (NFR-SCALE-1), and NGINX's `upstream
+  backend_upstream { server backend:8000; }` would round-robin across replicas via Docker's
+  embedded DNS. `docker compose up --scale backend=3` does **not** work with this compose
+  file as it is: the service has a fixed `container_name` (`agriguard_backend`), and Compose
+  refuses to scale a service with a fixed name. Remove `container_name` (and the published
+  `8000` port) from the backend in a production override first.
 - **Ports exposed for local dev only**: `postgres:5432` and `backend:8000` are published to
   the host for convenience. Remove their `ports:` mappings in a production compose override
   so only NGINX (port 80/443) is internet-facing.
