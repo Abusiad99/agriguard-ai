@@ -14,6 +14,7 @@ from collections import defaultdict, deque
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.routing import Match
 
 from app.core.config import get_settings
 
@@ -32,17 +33,30 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Sliding-window limiter keyed by (client_ip, route_group)."""
+    """Sliding-window limiter keyed by (client_ip, route group).
+
+    A route group is one of the specially limited paths (login, register, scan upload,
+    outbreak prediction) or the API resource the request belongs to ("diagnoses",
+    "media", "agri-reports", ...); everything else is "other". Keys are therefore
+    bounded per client: counting per exact URL would give every distinct URL its own
+    allowance (no real limit) and let anyone grow this table without bound by
+    requesting made-up paths. Idle keys are dropped periodically.
+    """
 
     _AUTH_PATHS = ("/api/v1/auth/login", "/api/v1/auth/register")
     _SCAN_PATHS = ("/api/v1/scans",)  # follow-up scans of tracked plants use this path too
     _PREDICTION_PATHS = ("/api/v1/outbreak/predictions",)
+    _MAX_WINDOW_SECONDS = 3600
+    _PRUNE_EVERY = 2000  # requests between sweeps of idle keys
 
     def __init__(self, app):
         super().__init__(app)
         self._hits: dict[str, deque] = defaultdict(deque)
+        self._prefix = settings.api_prefix.rstrip("/") + "/"
+        self._resources: set[str] = set()  # API resources seen to match a registered route
+        self._since_prune = 0
 
-    def _limit_for(self, path: str) -> tuple[int, int] | None:
+    def _limit_for(self, path: str) -> tuple[int, int]:
         if path in self._AUTH_PATHS:
             return settings.rate_limit_auth_per_5min, 300
         if path in self._SCAN_PATHS:
@@ -51,15 +65,40 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return settings.rate_limit_prediction_per_hour, 3600
         return settings.rate_limit_default_per_5min, 300
 
+    def _group_for(self, request: Request) -> str:
+        path = request.url.path
+        if path in self._AUTH_PATHS or path in self._SCAN_PATHS or path in self._PREDICTION_PATHS:
+            return path
+        if path.startswith(self._prefix):
+            resource = path[len(self._prefix):].split("/", 1)[0]
+            if resource in self._resources:
+                return resource
+            # A resource name counts only once a registered route matches it, so made-up
+            # paths can never add groups. (No route has a parameter in this position.)
+            if resource and any(route.matches(request.scope)[0] != Match.NONE for route in request.app.routes):
+                self._resources.add(resource)
+                return resource
+        return "other"
+
+    def _prune(self, now: float) -> None:
+        cutoff = now - self._MAX_WINDOW_SECONDS
+        for key in [k for k, window in self._hits.items() if not window or window[-1] < cutoff]:
+            del self._hits[key]
+
     async def dispatch(self, request: Request, call_next):
         # Behind nginx this is only the real visitor IP if uvicorn trusts the proxy's
         # X-Forwarded-For (FORWARDED_ALLOW_IPS, set in docker-compose.yml); otherwise
         # every request shares nginx's IP and one bucket.
         client_ip = request.client.host if request.client else "unknown"
         limit, window_seconds = self._limit_for(request.url.path)
-        key = f"{client_ip}:{request.url.path}"
+        key = f"{client_ip}:{self._group_for(request)}"
 
         now = time.monotonic()
+        self._since_prune += 1
+        if self._since_prune >= self._PRUNE_EVERY:
+            self._since_prune = 0
+            self._prune(now)
+
         window = self._hits[key]
         while window and window[0] < now - window_seconds:
             window.popleft()

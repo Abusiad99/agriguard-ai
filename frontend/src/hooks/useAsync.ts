@@ -36,8 +36,3 @@ export function useAsync<T>(fetcher: () => Promise<T>, deps: React.DependencyLis
 
   return { ...state, refetch: run };
 }
-
-export function errorMessage(error: ApiError | Error): string {
-  if (error instanceof ApiError) return error.message;
-  return error.message || "An unexpected error occurred.";
-}

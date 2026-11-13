@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { dashboardApi } from "@/lib/endpoints/dashboard";
 import { adminApi } from "@/lib/endpoints/admin";
 import { PageHeader } from "@/components/ui/Card";
@@ -9,10 +9,10 @@ import { PageLoader } from "@/components/ui/PageLoader";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { ApiError } from "@/types/api";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 export default function AdminDashboardPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const dashboard = useAsync(() => dashboardApi.getSystemDashboard(), []);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -31,7 +31,7 @@ export default function AdminDashboardPage() {
       link.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setExportError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setExportError(apiErrorText(err, t, locale));
     } finally {
       setIsExporting(false);
     }
@@ -39,7 +39,7 @@ export default function AdminDashboardPage() {
 
   if (dashboard.status === "loading") return <PageLoader label={t.common.loading} />;
   if (dashboard.status === "error") {
-    return <ErrorState message={errorMessage(dashboard.error)} onRetry={dashboard.refetch} />;
+    return <ErrorState message={apiErrorText(dashboard.error, t, locale)} onRetry={dashboard.refetch} />;
   }
 
   const data = dashboard.data;

@@ -1,34 +1,11 @@
-# Local development setup (Windows, no Docker)
+# Developer notes: AI feature settings
 
-The README's *Quick start* is the short version. This page adds the details for the AI
-features (localization, plant recovery, outbreak risk).
+Installing and running the app is described in one place:
+**[docs/SETUP_AND_RUN.md](../SETUP_AND_RUN.md)**. Datasets and training are in
+**[DATASET_SETUP_GUIDE.md](../../DATASET_SETUP_GUIDE.md)**. This page only adds reference
+notes for the AI features (localization, plant recovery, outbreak risk, reports).
 
-## 1. Prerequisites
-
-Python 3.10+ (3.11 or 3.12 recommended), Node.js 18+, and PostgreSQL 14+ running locally.
-Docker and Redis are not needed.
-
-## 2. Install
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install-backend.ps1     # .venv, backend + AI packages, .env
-powershell -ExecutionPolicy Bypass -File scripts\install-frontend.ps1    # npm ci (includes leaflet, react-leaflet, vitest)
-```
-
-- The AI packages (`ai/requirements.txt`: PyTorch, timm, scikit-learn, scipy, joblib, …) are
-  needed for training and for running the segmentation and outbreak models. `-SkipAi`
-  installs only the backend. The API still runs, and the features report their models as
-  unavailable.
-- With a very deep checkout path, set `$env:AGRIGUARD_VENV` to a short folder first.
-
-## 3. Database
-
-```powershell
-psql -U postgres -c "CREATE ROLE agriguard LOGIN PASSWORD 'YOUR_DB_PASSWORD';"     # once
-psql -U postgres -c "CREATE DATABASE agriguard OWNER agriguard;"           # once
-powershell -ExecutionPolicy Bypass -File scripts\check-db.ps1
-powershell -ExecutionPolicy Bypass -File scripts\migrate.ps1               # upgrades to head (0008)
-```
+## What the migrations add
 
 | Migration | Adds |
 |---|---|
@@ -43,7 +20,10 @@ before 0007 have no stored alternatives, and their reports say so. Each has
 a `downgrade`, but `migrate.ps1` never runs one implicitly, and downgrading drops the
 feature tables and their data.
 
-## 4. Configuration (`.env`)
+Back up before migrating a database that holds data (`scripts\backup-db.ps1`, SETUP_AND_RUN
+section 3.9).
+
+## Settings (`.env`)
 
 New settings, all optional with the defaults shown in `.env.example`:
 
@@ -69,13 +49,7 @@ expiring `/api/v1/media/...` links. The old public `/storage/...` paths return 4
 `LEGACY_PUBLIC_MEDIA=true`. Report PDFs are cached under `LOCAL_STORAGE_DIR/reports/generated/`,
 which is never served directly.
 
-## 5. Run
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\start-backend.ps1     # http://127.0.0.1:8000/api/docs
-powershell -ExecutionPolicy Bypass -File scripts\start-frontend.ps1    # http://127.0.0.1:5173
-powershell -ExecutionPolicy Bypass -File scripts\stop-dev.ps1
-```
+## Pages and network access
 
 New pages: **My plants** (`/plants`), **Outbreak risk** (`/outbreak`), **Reports** (`/reports`)
 and **Admin → AI models** (`/admin/models`). The diagnosis page gains the localization card, the photo-quality notice
@@ -84,7 +58,7 @@ and *Track this plant*. On phones, Profile moves to the avatar in the top bar.
 The outbreak map loads OpenStreetMap tiles in the browser, and risk estimates call
 Open-Meteo from the backend. Both need internet access. The rest works offline.
 
-## 6. Without trained models
+## Without trained models
 
 Out of the box no segmentation or outbreak model exists, and that is the expected state:
 
@@ -92,19 +66,8 @@ Out of the box no segmentation or outbreak model exists, and that is the expecte
 - tracked plants with two or more scans are *Inconclusive*, with the reason shown;
 - the outbreak map shows observed cases (if any). Estimates return *model not ready*.
 
-See [../datasets/dataset-preparation-guide.md](../datasets/dataset-preparation-guide.md)
-to prepare data, and the feature pages for training commands.
-
-## 7. Tests
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\test.ps1
-powershell -ExecutionPolicy Bypass -File scripts\test.ps1 -PostgresUrl postgresql+psycopg2://agriguard:YOUR_DB_PASSWORD@127.0.0.1:5432/agriguard_test
-cd frontend; npm test   # Vitest unit tests
-```
-
-Details and the manual browser checklist are in
-[../testing/feature-verification.md](../testing/feature-verification.md).
+To prepare data and train the models, follow
+[DATASET_SETUP_GUIDE.md](../../DATASET_SETUP_GUIDE.md).
 
 ## Troubleshooting
 

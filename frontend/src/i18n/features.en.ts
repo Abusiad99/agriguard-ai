@@ -16,6 +16,18 @@ const featuresEn = {
       error: "Error",
       failed: "Failed",
     },
+    // One-sentence summary per state, shown instead of the registry's English message.
+    readinessDetail: {
+      ready: "The model is trained and available.",
+      not_configured: "This model is not configured.",
+      dataset_unavailable: "No dataset has been prepared and no trained model exists yet.",
+      not_trained: "A dataset is prepared, but no model has been trained yet.",
+      training_required: "The model needs to be trained (again) before it can be used.",
+      insufficient_data: "There is not enough data to train this model.",
+      unavailable: "The model is installed but could not be loaded.",
+      error: "The model run is incomplete or damaged.",
+      failed: "The last attempt to use this model failed.",
+    },
     version: "Version",
     architecture: "Architecture",
     datasetVersion: "Dataset version",

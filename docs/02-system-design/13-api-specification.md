@@ -287,9 +287,15 @@ they can branch on, since a downstream scan must still complete without weather 
 ## 10. Rate Limits (NFR-SEC-5)
 | Endpoint group | Limit |
 |---|---|
-| `/auth/login`, `/auth/register` | 10 requests / 5 min / IP |
-| `/scans` (POST) | 30 requests / hour / user |
-| All other authenticated endpoints | 300 requests / 5 min / user |
+| `/auth/login`, `/auth/register` | 10 requests / 5 min / IP, each |
+| `/scans` (POST) | 30 requests / hour / IP |
+| `/outbreak/predictions` (POST) | 60 requests / hour / IP |
+| Every other API resource (`diagnoses`, `media`, `agri-reports`, ...) | 300 requests / 5 min / IP, per resource |
+| Anything else (unknown paths, `/health`, docs) | 300 requests / 5 min / IP, shared |
+
+Limits are enforced per client IP by `RateLimitMiddleware` (settings `RATE_LIMIT_*`). Counters are
+kept per client and route group, never per exact URL, so the table stays bounded and idle
+counters are dropped. In the Docker deployment NGINX adds its own per-IP limits in front.
 
 ## 11. Authentication Details
 - Access tokens: JWT, HS256 or RS256, 15-minute TTL, contain `sub` (user id), `role`, `exp`, `iat`.

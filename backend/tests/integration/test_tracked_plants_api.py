@@ -136,6 +136,29 @@ class TestScansAndAssessment:
         assert client.delete(f"/api/v1/tracked-plants/{a['id']}/scans/{diagnosis}", headers=owner).status_code == 204
         assert client.get(f"/api/v1/diagnoses/{diagnosis}", headers=owner).status_code == 200  # diagnosis kept
 
+    def test_simultaneous_links_of_one_scan_conflict_instead_of_a_server_error(self, client, owner, monkeypatch):
+        """Two requests can both see "not linked yet" and both insert; the unique constraint
+        on the scan rejects the second. That used to surface as an unhandled error (500)."""
+        from app.infrastructure.repositories.ai_features_repository import SqlAlchemyRecoveryRepository
+
+        diagnosis = _scan(client, owner)["diagnosis_id"]
+        a, b = _plant(client, owner), _plant(client, owner, name="other")
+        assert client.post(f"/api/v1/tracked-plants/{a['id']}/scans", headers=owner, json={"diagnosis_id": diagnosis}).status_code == 201
+
+        real_lookup = SqlAlchemyRecoveryRepository.link_for_diagnosis
+        calls = {"n": 0}
+
+        def stale_once(self, diagnosis_id):  # the first read misses the link the "other" request just wrote
+            calls["n"] += 1
+            return None if calls["n"] == 1 else real_lookup(self, diagnosis_id)
+
+        monkeypatch.setattr(SqlAlchemyRecoveryRepository, "link_for_diagnosis", stale_once)
+        resp = client.post(f"/api/v1/tracked-plants/{b['id']}/scans", headers=owner, json={"diagnosis_id": diagnosis})
+        assert resp.status_code == 409 and resp.json()["error"]["code"] == "CONFLICT"
+        monkeypatch.undo()
+        detail = client.get(f"/api/v1/tracked-plants/{a['id']}", headers=owner).json()
+        assert [s["diagnosis_id"] for s in detail["scans"]] == [diagnosis]  # still linked to the first plant only
+
     def test_single_scan_is_insufficient_and_compare_needs_two(self, client, owner):
         plant = _plant(client, owner, initial_diagnosis_id=_scan(client, owner)["diagnosis_id"])
         assert client.get(f"/api/v1/tracked-plants/{plant['id']}/assessment", headers=owner).json()["status"] == "insufficient_data"

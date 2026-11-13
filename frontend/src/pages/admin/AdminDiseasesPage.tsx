@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { diseasesApi } from "@/lib/endpoints/knowledgeBase";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -12,7 +12,7 @@ import { IconTile, PageHeader } from "@/components/ui/Card";
 import { Pagination } from "@/components/ui/Pagination";
 import { Alert } from "@/components/ui/Alert";
 import type { DiseaseResponseSchema } from "@/types/api";
-import { ApiError } from "@/types/api";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 const PAGE_SIZE = 20;
 
@@ -55,7 +55,7 @@ function toFormState(d: DiseaseResponseSchema): DiseaseFormState {
 }
 
 export default function AdminDiseasesPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [page, setPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<DiseaseResponseSchema | null>(null);
@@ -82,7 +82,7 @@ export default function AdminDiseasesPage() {
   const handleSave = async () => {
     setFormError(null);
     if (!form.plant_canonical_name.trim() || !form.name.trim() || !form.description.trim()) {
-      setFormError("Plant, name, and description are required.");
+      setFormError(t.admin.diseaseRequiredFields);
       return;
     }
 
@@ -108,7 +108,7 @@ export default function AdminDiseasesPage() {
       setIsModalOpen(false);
       diseases.refetch();
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setFormError(apiErrorText(err, t, locale));
     } finally {
       setIsSaving(false);
     }
@@ -126,10 +126,10 @@ export default function AdminDiseasesPage() {
       />
 
       {diseases.status === "loading" && <PageLoader label={t.common.loading} />}
-      {diseases.status === "error" && <ErrorState message={errorMessage(diseases.error)} onRetry={diseases.refetch} />}
+      {diseases.status === "error" && <ErrorState message={apiErrorText(diseases.error, t, locale)} onRetry={diseases.refetch} />}
 
       {diseases.status === "success" && diseases.data.items.length === 0 && (
-        <EmptyState iconName="book" title="No diseases yet" body="Add the first knowledge-base entry to get started." />
+        <EmptyState iconName="book" title={t.admin.noDiseases} body={t.admin.noDiseasesBody} />
       )}
 
       {diseases.status === "success" && diseases.data.items.length > 0 && (
@@ -163,15 +163,15 @@ export default function AdminDiseasesPage() {
           <Input
             label={t.admin.plantName}
             name="plant_canonical_name"
-            placeholder="tomato, date_palm, apple…"
+            placeholder={t.admin.plantPlaceholder}
             value={form.plant_canonical_name}
             onChange={(e) => setForm({ ...form, plant_canonical_name: e.target.value })}
           />
           <Input label={t.admin.diseaseName} name="disease_name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <Input
-            label="Disease type"
+            label={t.admin.diseaseType}
             name="disease_type"
-            placeholder="fungal, bacterial, pest…"
+            placeholder={t.admin.diseaseTypePlaceholder}
             value={form.disease_type}
             onChange={(e) => setForm({ ...form, disease_type: e.target.value })}
           />
@@ -182,17 +182,17 @@ export default function AdminDiseasesPage() {
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
-          <Input label="Symptoms (comma-separated)" name="symptoms" value={form.symptoms} onChange={(e) => setForm({ ...form, symptoms: e.target.value })} />
-          <Input label="Causes (comma-separated)" name="causes" value={form.causes} onChange={(e) => setForm({ ...form, causes: e.target.value })} />
+          <Input label={t.admin.symptomsList} name="symptoms" value={form.symptoms} onChange={(e) => setForm({ ...form, symptoms: e.target.value })} />
+          <Input label={t.admin.causesList} name="causes" value={form.causes} onChange={(e) => setForm({ ...form, causes: e.target.value })} />
           <Input
-            label={`Transmission method (${t.common.optional})`}
+            label={`${t.admin.transmissionMethod} (${t.common.optional})`}
             name="transmission_method"
             value={form.transmission_method}
             onChange={(e) => setForm({ ...form, transmission_method: e.target.value })}
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label={`Recovery probability % (${t.common.optional})`}
+              label={`${t.admin.recoveryProbability} (${t.common.optional})`}
               name="recovery_probability"
               type="number"
               min={0}
@@ -201,9 +201,9 @@ export default function AdminDiseasesPage() {
               onChange={(e) => setForm({ ...form, recovery_probability: e.target.value })}
             />
             <Input
-              label={`Recovery time (${t.common.optional})`}
+              label={`${t.admin.recoveryTime} (${t.common.optional})`}
               name="estimated_recovery_time"
-              placeholder="2-3 weeks"
+              placeholder={t.admin.recoveryTimePlaceholder}
               value={form.estimated_recovery_time}
               onChange={(e) => setForm({ ...form, estimated_recovery_time: e.target.value })}
             />

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { reportsApi, saveBlob } from "@/lib/endpoints/reports";
 import { formatTemplate } from "@/lib/aiFeatureUi";
 import { ReportDocument } from "@/components/reports/ReportDocument";
@@ -13,10 +13,11 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { ApiError } from "@/types/api";
 import type { Report } from "@/types/reports";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 export default function ReportViewerPage() {
   const { id } = useParams<{ id: string }>();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const navigate = useNavigate();
   const report = useAsync(() => reportsApi.get(id!), [id]);
   const versions = useAsync(() => reportsApi.versions(id!), [id]);
@@ -34,7 +35,7 @@ export default function ReportViewerPage() {
 
   const r = shown.current;
   if (report.status === "error" && !r) {
-    const msg = report.error instanceof ApiError && report.error.status === 404 ? t.reports.loadError : errorMessage(report.error);
+    const msg = report.error instanceof ApiError && report.error.status === 404 ? t.reports.loadError : apiErrorText(report.error, t, locale);
     return <ErrorState message={msg} onRetry={report.refetch} />;
   }
   if (!r) return <PageLoader label={t.common.loading} />;
@@ -45,7 +46,7 @@ export default function ReportViewerPage() {
     try {
       await action();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setError(apiErrorText(err, t, locale));
     } finally {
       setBusy(null);
     }

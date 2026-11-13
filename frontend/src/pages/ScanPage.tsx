@@ -9,12 +9,13 @@ import { ScanRing } from "@/components/ui/Spinner";
 import { Switch } from "@/components/ui/Switch";
 import { scansApi } from "@/lib/endpoints/scans";
 import { ApiError, isUnrecognizedPlant } from "@/types/api";
+import { apiErrorText } from "@/lib/apiErrorText";
 import { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES } from "@/utils/validators";
 
 type Stage = "idle" | "preview" | "analyzing" | "unrecognized";
 
 export default function ScanPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -101,9 +102,10 @@ export default function ScanPage() {
       if (err instanceof ApiError) {
         if (err.code === "INVALID_IMAGE") setError(t.scan.invalidImage);
         else if (err.code === "FILE_TOO_LARGE") setError(t.scan.fileTooLarge);
-        else setError(err.message);
+        else if (err.code === "SERVICE_UNAVAILABLE") setError(t.scan.modelUnavailable);
+        else setError(apiErrorText(err, t, locale));
       } else {
-        setError(t.common.unknownError);
+        setError(apiErrorText(err, t, locale));
       }
     }
   };
@@ -183,7 +185,7 @@ export default function ScanPage() {
               <div className="relative overflow-hidden rounded-[1.25rem] bg-grove">
                 <img
                   src={previewUrl}
-                  alt="Selected plant"
+                  alt={t.scan.previewAlt}
                   className={`max-h-[28rem] w-full object-cover transition-all duration-700 ${stage === "analyzing" ? "scale-[1.03] brightness-[0.7] saturate-[1.15]" : ""}`}
                 />
                 {stage === "analyzing" && <AnalyzingOverlay />}

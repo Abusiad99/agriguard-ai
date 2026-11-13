@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { scansApi } from "@/lib/endpoints/scans";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -9,11 +9,12 @@ import { ButtonLink } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/Card";
 import { Pagination } from "@/components/ui/Pagination";
 import { DiagnosisCard } from "@/components/diagnosis/DiagnosisCard";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 const PAGE_SIZE = 10;
 
 export default function HistoryPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [plant, setPlant] = useState("");
   const [disease, setDisease] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -70,7 +71,7 @@ export default function HistoryPage() {
           </div>
         )}
 
-        {history.status === "error" && <ErrorState message={errorMessage(history.error)} onRetry={history.refetch} />}
+        {history.status === "error" && <ErrorState message={apiErrorText(history.error, t, locale)} onRetry={history.refetch} />}
 
         {history.status === "success" && history.data.items.length === 0 && (
           <EmptyState

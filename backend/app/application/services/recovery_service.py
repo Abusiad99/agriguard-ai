@@ -15,6 +15,8 @@ from datetime import date, datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.infrastructure.db.models.ai_features_model import (
     FollowUpReminderModel,
@@ -101,8 +103,17 @@ class RecoveryService:
             if existing.tracked_plant_id == plant.id:
                 return existing
             raise ConflictError("That scan is already linked to another tracked plant.")
-        link = self.repo.add(TrackedPlantScanModel(tracked_plant_id=plant.id, diagnosis_id=diagnosis.id,
-                                                   treatment_stage=stage, notes=notes))
+        try:
+            link = self.repo.add(TrackedPlantScanModel(tracked_plant_id=plant.id, diagnosis_id=diagnosis.id,
+                                                       treatment_stage=stage, notes=notes))
+        except IntegrityError:
+            # Two requests linked the same scan at the same moment; the unique constraint on
+            # diagnosis_id kept one. Answer like the check above instead of a server error.
+            self.repo.db.rollback()
+            existing = self.repo.link_for_diagnosis(diagnosis.id)
+            if existing is not None and existing.tracked_plant_id == plant.id:
+                return existing
+            raise ConflictError("That scan is already linked to another tracked plant.")
         self.repo.add_event(plant.id, "scan_added", diagnosis_id=diagnosis.id,
                             details={"treatment_stage": stage, "predicted_condition": diagnosis.predicted_condition})
         self.reassess(owner_id, plant.id)

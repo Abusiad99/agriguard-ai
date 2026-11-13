@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { reportsApi } from "@/lib/endpoints/reports";
 import { formatTemplate } from "@/lib/aiFeatureUi";
 import { PageHeader } from "@/components/ui/Card";
@@ -15,6 +15,7 @@ import { PageLoader } from "@/components/ui/PageLoader";
 import { Pagination } from "@/components/ui/Pagination";
 import { formatDate } from "@/utils/format";
 import type { ReportType } from "@/types/reports";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 const PAGE_SIZE = 12;
 
@@ -59,7 +60,7 @@ export default function ReportsPage() {
       {selected.length === 1 && <p className="text-sm text-muted">{r.selectTwo}</p>}
 
       {list.status === "loading" && <PageLoader label={t.common.loading} />}
-      {list.status === "error" && <ErrorState message={errorMessage(list.error)} onRetry={list.refetch} />}
+      {list.status === "error" && <ErrorState message={apiErrorText(list.error, t, locale)} onRetry={list.refetch} />}
       {list.status === "success" && list.data.items.length === 0 && (
         <EmptyState iconName="document" title={r.emptyTitle} body={r.emptyBody} />
       )}

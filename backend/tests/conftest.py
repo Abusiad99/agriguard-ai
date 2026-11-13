@@ -23,7 +23,11 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+# Always in-memory SQLite for the application's own engine, even when the shell or a .env
+# file points DATABASE_URL at a real database: the test suite must never be able to reach
+# one. (Database tests on PostgreSQL use AGRIGUARD_TEST_DATABASE_URL below, which must name
+# a throwaway *_test database.)
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-unit-tests-only-" + "x" * 20)
 os.environ.setdefault("LOCAL_STORAGE_DIR", str(Path(tempfile.gettempdir()) / "agriguard_test_storage"))
 # Tests never call the real Gemini API, even if a developer's .env holds a key

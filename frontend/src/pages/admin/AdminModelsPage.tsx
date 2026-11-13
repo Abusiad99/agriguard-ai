@@ -1,5 +1,5 @@
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { modelsApi } from "@/lib/endpoints/aiFeatures";
 import { humanizeLabel } from "@/lib/aiFeatureUi";
 import { Card, CardHeader, CardTitle, PageHeader } from "@/components/ui/Card";
@@ -8,6 +8,7 @@ import { PageLoader } from "@/components/ui/PageLoader";
 import { ReadinessBadge } from "@/components/ai/ReadinessBadge";
 import { formatDate } from "@/utils/format";
 import type { ModelCard } from "@/types/aiFeatures";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 const TASK_ICON = { classification: "leaf", segmentation: "target", outbreak: "pin" } as const;
 
@@ -42,7 +43,8 @@ function ModelCardView({ card }: { card: ModelCard }) {
         <CardTitle icon={TASK_ICON[card.task]}>{m.task[card.task]}</CardTitle>
         <ReadinessBadge readiness={card.readiness} />
       </CardHeader>
-      <p className="text-sm leading-relaxed text-muted">{card.message}</p>
+      {/* The registry words its status in English; other languages get the translated summary. */}
+      <p className="text-sm leading-relaxed text-muted">{locale === "en" ? card.message : m.readinessDetail[card.readiness]}</p>
       {card.name && <p className="mt-2 font-data text-sm text-ink">{card.name}</p>}
       <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
         {rows.filter(([, v]) => v).map(([k, v]) => (
@@ -70,13 +72,13 @@ function ModelCardView({ card }: { card: ModelCard }) {
 }
 
 export default function AdminModelsPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const models = useAsync(() => modelsApi.list(), []);
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={t.models.title} subtitle={t.models.subtitle} />
       {models.status === "loading" && <PageLoader label={t.common.loading} />}
-      {models.status === "error" && <ErrorState message={errorMessage(models.error)} onRetry={models.refetch} />}
+      {models.status === "error" && <ErrorState message={apiErrorText(models.error, t, locale)} onRetry={models.refetch} />}
       {models.status === "success" && (
         <div className="grid gap-5 lg:grid-cols-2">
           {models.data.map((card) => <ModelCardView key={card.task} card={card} />)}

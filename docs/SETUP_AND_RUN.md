@@ -171,6 +171,9 @@ git lfs install     # once per computer
 git lfs pull        # inside agriguard-ai
 ```
 
+`scripts\classification.ps1 -Action validate` tells you whether the real images are present.
+Everything about datasets and training is in [DATASET_SETUP_GUIDE.md](../DATASET_SETUP_GUIDE.md).
+
 ### 2.3 Folder structure
 
 | Folder | Contents |
@@ -196,6 +199,14 @@ running dev servers), `frontend/node_modules/`, `frontend/dist/`.
 AgriGuard AI stores everything in PostgreSQL. The migrations use PostgreSQL-only
 features (`JSONB`, `gen_random_uuid()`, a materialized view), so the database must be
 PostgreSQL. Version 14 or newer works; 16 is tested.
+
+**Already have your data in the Docker stack's database?** Then you don't need a second
+PostgreSQL. Start Docker Desktop and only the database container, skip 3.1 to 3.3, and use
+the `POSTGRES_PASSWORD` from `docker\.env` in `DATABASE_URL` (3.4):
+
+```powershell
+docker start agriguard_postgres
+```
 
 ### 3.1 Install
 
@@ -270,6 +281,17 @@ python -m alembic current          # prints "0008 (head)" when up to date
 cd ..
 ```
 
+On a database that already holds data, always back up first (3.9), then upgrade, then check:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\backup-db.ps1
+powershell -ExecutionPolicy Bypass -File scripts\migrate.ps1
+powershell -ExecutionPolicy Bypass -File scripts\check-db.ps1
+```
+
+Migrations `0003` to `0008` only add tables and columns (and rebuild one dashboard view); they do
+not change existing rows.
+
 Run the upgrade again after every `git pull` that adds a migration. `dev.ps1` refuses to
 start when the database is behind and tells you so. Downgrades are never run implicitly.
 `migrate.ps1 -Action downgrade -Revision <rev>` exists, but it **drops the tables and
@@ -308,6 +330,52 @@ It only reads; it never changes the database.
 The automated backend tests use an in-memory SQLite database, so they run without
 PostgreSQL. SQLite is **not supported for running the application**: the migrations target
 PostgreSQL, and a SQLite database would have no migration history.
+
+### 3.9 Back up and restore
+
+Back up before every migration and before importing data. One command writes a compressed
+backup **outside the repository** (default: `agriguard-backups` in your user folder) and
+checks that the file is a readable archive. It never changes the database.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\backup-db.ps1
+```
+
+It uses `pg_dump` and `pg_restore` from your PostgreSQL installation (PATH, or
+`C:\Program Files\PostgreSQL\<version>\bin`). If PostgreSQL runs in the Docker container
+instead, name the container and `pg_dump` runs inside it:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\backup-db.ps1 -Container agriguard_postgres
+```
+
+A backup is only proven by restoring it. Restore into a **new, empty** database, never over
+the one in use, and compare a few counts:
+
+```powershell
+psql -U postgres -c "CREATE DATABASE agriguard_restore_check OWNER agriguard;"
+pg_restore -U agriguard -d agriguard_restore_check --no-owner "$HOME\agriguard-backups\<file>.dump"
+psql -U agriguard -d agriguard_restore_check -c "SELECT count(*) FROM users;"
+psql -U postgres -c "DROP DATABASE agriguard_restore_check;"
+```
+
+With PostgreSQL in Docker, the same check runs inside the container:
+
+```powershell
+docker cp "$HOME\agriguard-backups\<file>.dump" agriguard_postgres:/tmp/restore.dump
+docker exec agriguard_postgres createdb -U agriguard agriguard_restore_check
+docker exec agriguard_postgres pg_restore -U agriguard -d agriguard_restore_check --no-owner /tmp/restore.dump
+docker exec agriguard_postgres psql -U agriguard -d agriguard_restore_check -c "SELECT count(*) FROM users;"
+docker exec agriguard_postgres dropdb -U agriguard agriguard_restore_check
+docker exec agriguard_postgres rm /tmp/restore.dump
+```
+
+To really go back to a backup: stop the app, restore into a new database as above, point
+`DATABASE_URL` at it and start the app. Keep the old database until you have checked the
+restored one.
+
+Backups contain every user's data and password hashes. Keep them private. Git ignores
+`*.dump` files, and the script refuses to write into the repository.
 
 ---
 
@@ -629,12 +697,15 @@ external login provider: accounts are email and password, stored in your databas
 | Required for scans? | **Yes.** Without a trained run, `POST /api/v1/scans` answers **503** (`SERVICE_UNAVAILABLE`: "No trained model found...") and `/health` shows `"ai_service":"degraded"`. Everything else works |
 | CPU / GPU | `AGRIGUARD_DEVICE=auto` uses CUDA if available, then Apple MPS, then CPU. `pip install -r ai\requirements.txt` installs CPU PyTorch on Windows; for an NVIDIA GPU, install PyTorch with the command from https://pytorch.org/get-started/locally/ |
 
-Train and check a model (needs the images from section 2.2, and takes a long time on a CPU):
+Check the images, then train and check a model (needs the images from section 2.2, and takes
+a long time on a CPU). The full procedure is in
+[DATASET_SETUP_GUIDE.md](../DATASET_SETUP_GUIDE.md):
 
 ```powershell
-.\.venv\Scripts\python.exe train.py                                   # writes artifacts\runs\<timestamp>_<arch>\
-.\.venv\Scripts\python.exe evaluate.py                                # test-split metrics of the latest run
-.\.venv\Scripts\python.exe inference.py --image path\to\leaf.jpg      # JSON prediction for one photo
+powershell -ExecutionPolicy Bypass -File scripts\classification.ps1 -Action validate    # read-only dataset check
+powershell -ExecutionPolicy Bypass -File scripts\classification.ps1 -Action train       # writes artifacts\runs\<timestamp>_<arch>\
+powershell -ExecutionPolicy Bypass -File scripts\classification.ps1 -Action evaluate    # test-split metrics of the latest run
+.\.venv\Scripts\python.exe inference.py --image path\to\leaf.jpg                        # JSON prediction for one photo
 ```
 
 Restart the backend afterwards; `/health` then shows `"ai_service":"ok"`.
@@ -652,6 +723,9 @@ Restart the backend afterwards; `/health` then shows `"ai_service":"ok"`.
 | Weather guidance (spraying conditions) | Implemented and working | Internet access to Open-Meteo. Uses published wind limits and an AgriGuard rain threshold; checks conditions at scan time only |
 | Agricultural reports (diagnosis, plant progress, regional risk) | Implemented and working | Built from stored records. The diagnosis and plant reports need diagnoses (so a classifier). Wording by Gemini is optional |
 | Gemini explanation | Implemented | `GEMINI_API_KEY` **and** a trained classifier (it explains the classifier's result) |
+
+Which data each model needs, where to put it and the exact training commands are in
+[DATASET_SETUP_GUIDE.md](../DATASET_SETUP_GUIDE.md).
 
 None of the models has been trained or evaluated on real field data in this repository.
 The automated tests use clearly labelled **synthetic** data and a stand-in classifier. They
@@ -707,6 +781,9 @@ Notes:
 - The stack publishes ports 80 (NGINX), 8000 (backend) and 5432 (PostgreSQL). Stop a local
   PostgreSQL (or the native dev servers) first, or change the ports, if they clash.
 - The backend container waits for PostgreSQL and runs `alembic upgrade head` on every start.
+  Before you rebuild a stack whose database holds data, back it up (section 3.9, with
+  `-Container agriguard_postgres`). An image built from an older checkout cannot run against a
+  database that a newer version has already migrated: rebuild with `docker compose up -d --build`.
 - The backend image uses the **CPU-only** PyTorch build (about 2.4 GB image; the backend
   container gets no GPU). For the CUDA build:
   `docker compose build --build-arg TORCH_INDEX_URL= backend`.
@@ -837,10 +914,11 @@ Never drop or recreate your real database as a troubleshooting step. Use `check-
 | `install-backend.ps1` | Python environment, backend + AI packages, `.env` from the template |
 | `install-frontend.ps1` | `npm ci` |
 | `check-db.ps1` | Read-only database check (server, login, migration revision) |
+| `backup-db.ps1` | Back up the database to a file outside the repository and check it is readable (`-Container <name>` for PostgreSQL in Docker) |
 | `migrate.ps1` | Alembic `upgrade` (default), `current`, `history`, `downgrade -Revision <rev>` |
 | `check-gemini.ps1` | Optional Gemini key check (one model lookup, key never printed) |
 | `dev.ps1` | Check everything and start backend + frontend; Ctrl+C stops them |
 | `start-backend.ps1` / `start-frontend.ps1` | Start one server (background, or `-Foreground`) |
 | `stop-dev.ps1` | Stop the servers the scripts started |
 | `test.ps1` | All automated checks |
-| `segmentation.ps1`, `outbreak.ps1`, `recovery-data.ps1` | Data preparation and training for the AI features (see the feature docs) |
+| `classification.ps1`, `segmentation.ps1`, `outbreak.ps1`, `recovery-data.ps1` | Check datasets, train, evaluate and show model status (`-Action ...`; see [DATASET_SETUP_GUIDE.md](../DATASET_SETUP_GUIDE.md)) |

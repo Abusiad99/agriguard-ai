@@ -6,10 +6,11 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { ApiError } from "@/types/api";
+import { apiErrorText } from "@/lib/apiErrorText";
 import { checkPasswordStrength, isValidEmail } from "@/utils/validators";
 
 export default function RegisterPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { register } = useAuth();
   const navigate = useNavigate();
 
@@ -45,13 +46,15 @@ export default function RegisterPage() {
         for (const d of err.details) {
           if (d.field) serverFieldErrors[d.field] = d.issue;
         }
-        if (Object.keys(serverFieldErrors).length > 0) {
+        // The server words field problems in English: show them under the fields for English
+        // readers, and one translated message for everyone else.
+        if (Object.keys(serverFieldErrors).length > 0 && locale === "en") {
           setFieldErrors(serverFieldErrors);
         } else {
-          setFormError(err.message || t.auth.genericError);
+          setFormError(apiErrorText(err, t, locale));
         }
       } else {
-        setFormError(t.auth.genericError);
+        setFormError(apiErrorText(err, t, locale));
       }
     } finally {
       setIsSubmitting(false);

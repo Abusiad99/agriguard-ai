@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { plantsApi } from "@/lib/endpoints/aiFeatures";
 import { recoveryTone } from "@/lib/aiFeatureUi";
 import { PageHeader, Card, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -16,6 +16,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Icon } from "@/components/ui/Icon";
 import { PlantForm } from "@/components/plants/PlantForm";
 import { formatDate } from "@/utils/format";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 const PAGE_SIZE = 12;
 
@@ -67,7 +68,7 @@ export default function PlantsPage() {
       {plants.status === "loading" ? (
         <PageLoader label={t.common.loading} />
       ) : plants.status === "error" ? (
-        <ErrorState message={errorMessage(plants.error)} onRetry={plants.refetch} />
+        <ErrorState message={apiErrorText(plants.error, t, locale)} onRetry={plants.refetch} />
       ) : plants.data.items.length === 0 ? (
         <EmptyState iconName="sprout" title={p.emptyTitle} body={p.emptyBody}
                     action={<Button icon="plus" onClick={() => setCreating(true)}>{p.newPlant}</Button>} />

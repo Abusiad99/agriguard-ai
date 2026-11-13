@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { outbreakApi } from "@/lib/endpoints/aiFeatures";
 import { formatTemplate, humanizeLabel, POSITIVE_RATE_BANDS, RISK_COLORS } from "@/lib/aiFeatureUi";
 import { Card, CardHeader, CardTitle, PageHeader } from "@/components/ui/Card";
@@ -16,8 +16,8 @@ import { BarChart } from "@/components/charts/MiniCharts";
 import { RiskMap, type MapLayerKind } from "@/components/outbreak/RiskMap";
 import { GenerateReportButton } from "@/components/reports/GenerateReportButton";
 import { formatDate } from "@/utils/format";
-import { ApiError } from "@/types/api";
 import type { GeoArea, MapCell, PredictionResult, PredictionSummary, RiskLevel } from "@/types/aiFeatures";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 const WINDOWS = [30, 90, 365] as const;
 const RISK_LEGEND: RiskLevel[] = ["low", "moderate", "high", "critical"];
@@ -40,7 +40,7 @@ const isoDaysAgo = (days: number) => {
 };
 
 export default function OutbreakPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const o = t.outbreak;
   const readiness = useAsync(() => outbreakApi.readiness(), []);
   const filters = useAsync(() => outbreakApi.filters(), []);
@@ -74,10 +74,10 @@ export default function OutbreakPage() {
     outbreakApi
       .lookup(lat, lon)
       .then((r) => setSelection({ areaId: r.area_id, bounds: r.bounds, center: r.center }))
-      .catch((err) => setLookupError(err instanceof ApiError ? err.message : t.common.unknownError));
+      .catch((err) => setLookupError(apiErrorText(err, t, locale)));
   };
 
-  if (readiness.status === "error") return <ErrorState message={errorMessage(readiness.error)} onRetry={readiness.refetch} />;
+  if (readiness.status === "error") return <ErrorState message={apiErrorText(readiness.error, t, locale)} onRetry={readiness.refetch} />;
 
   const privacy = readiness.status === "success" ? readiness.data.privacy : null;
 
@@ -140,7 +140,7 @@ export default function OutbreakPage() {
 
           <MapLegend layer={layer} />
 
-          {map.status === "error" && <Alert tone="error">{errorMessage(map.error)}</Alert>}
+          {map.status === "error" && <Alert tone="error">{apiErrorText(map.error, t, locale)}</Alert>}
           {lookupError && <Alert tone="error">{lookupError}</Alert>}
           {map.status === "success" && map.data.cells.length === 0 && (
             <Alert tone="info" title={o.emptyTitle}>{o.emptyBody}</Alert>
@@ -220,7 +220,7 @@ function AreaPanel({ selection, crop, disease, dateFrom, horizon, onPredicted, o
       if (res.persisted) onPredicted();
       if (selection.areaId) detail.refetch();
     } catch (err) {
-      setEstimateError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setEstimateError(apiErrorText(err, t, locale));
     } finally {
       setEstimating(false);
     }
@@ -240,7 +240,7 @@ function AreaPanel({ selection, crop, disease, dateFrom, horizon, onPredicted, o
       </p>
 
       {detail.status === "loading" && <PageLoader label={t.common.loading} />}
-      {detail.status === "error" && <Alert tone="error">{errorMessage(detail.error)}</Alert>}
+      {detail.status === "error" && <Alert tone="error">{apiErrorText(detail.error, t, locale)}</Alert>}
 
       {detail.status === "success" && (!s || s.inspections === 0) && <p className="text-sm text-muted">{a.noObservations}</p>}
 

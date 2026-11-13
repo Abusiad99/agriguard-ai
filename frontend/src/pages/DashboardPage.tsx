@@ -1,6 +1,6 @@
 import { useAuth } from "@/context/AuthContext";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { dashboardApi } from "@/lib/endpoints/dashboard";
 import { PageHeader } from "@/components/ui/Card";
 import { PageLoader } from "@/components/ui/PageLoader";
@@ -8,15 +8,16 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ButtonLink } from "@/components/ui/Button";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 export default function DashboardPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { user } = useAuth();
   const dashboard = useAsync(() => dashboardApi.getMyDashboard(), []);
 
   if (dashboard.status === "loading") return <PageLoader label={t.common.loading} />;
   if (dashboard.status === "error") {
-    return <ErrorState message={errorMessage(dashboard.error)} onRetry={dashboard.refetch} />;
+    return <ErrorState message={apiErrorText(dashboard.error, t, locale)} onRetry={dashboard.refetch} />;
   }
 
   const data = dashboard.data;

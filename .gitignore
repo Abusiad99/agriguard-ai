@@ -37,3 +37,9 @@ datasets/*/**/*
 !datasets/*/manifests/class_mapping.example.json
 !datasets/*/schemas/*.json
 !datasets/*/samples/*.header.csv
+
+# Database backups and dumps are never committed (scripts/backup-db.ps1 writes outside the repository).
+*.dump
+*.dump.sha256
+*.backup
+/backups/

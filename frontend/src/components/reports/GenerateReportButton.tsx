@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { useLocale } from "@/context/LocaleContext";
 import { reportsApi, type ReportRequest } from "@/lib/endpoints/reports";
-import { ApiError } from "@/types/api";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 /** "Full report" entry point: picks the report language (defaults to the app's) and
  * opens the generated report. */
@@ -27,7 +27,7 @@ export function GenerateReportButton({ request, label, variant = "secondary", fu
       const report = await reportsApi.create({ ...request, locale: lang });
       navigate(`/reports/${report.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setError(apiErrorText(err, t, locale));
       setBusy(false);
     }
   };

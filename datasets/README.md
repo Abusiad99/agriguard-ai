@@ -1,16 +1,24 @@
 # Datasets
 
-| Folder | Used for | Status |
-|---|---|---|
-| `plantwild_v2/` | Plant disease **classification** (`train.py`) | Present (Git LFS images) |
-| `segmentation/` | Disease **localization** model | Structure only — awaiting your annotated dataset |
-| `outbreak/` | Outbreak **risk** model | Structure only — awaiting your observation data |
-| `recovery/` | Calibrating **recovery assessment** rules | Structure only — awaiting longitudinal data |
+**Start with [DATASET_SETUP_GUIDE.md](../DATASET_SETUP_GUIDE.md).** It says what to put where,
+how to check it, how to train, and how to confirm the app uses the result.
 
-Each folder's README lists the exact files and the commands to validate, preprocess,
-train and evaluate. The step-by-step guide is
-[docs/datasets/dataset-preparation-guide.md](../docs/datasets/dataset-preparation-guide.md).
+| Folder | Used for | Status in the repository |
+|---|---|---|
+| `plantwild_v2/` | Plant disease **classification** | 11,488 images in 115 disease folders, stored with Git LFS (`git lfs pull` downloads them). No "healthy" folders |
+| any other folder you add | More classification images (`<your folder>/<plant> <condition>/*.jpg`) | Yours; ignored by Git |
+| `segmentation/` | Disease **localization** model | Structure only; needs your annotated dataset |
+| `outbreak/` | Outbreak **risk** model | Structure only; needs your inspection records |
+| `recovery/` | Calibrating the **recovery** rules (optional) | Structure only; needs your longitudinal data |
+
+Check the classification images (read-only):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\classification.ps1 -Action validate
+```
+
+The other three folders each have a README with their files and commands.
 
 Real data files are never committed (see `.gitignore`); only READMEs, schemas, examples
-and `.gitkeep` placeholders are. No fabricated data is stored here — the automated tests
+and `.gitkeep` placeholders are. No fabricated data is stored here: the automated tests
 generate their synthetic fixtures in temporary folders.

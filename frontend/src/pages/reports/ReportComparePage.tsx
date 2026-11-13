@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { reportsApi } from "@/lib/endpoints/reports";
 import { formatTemplate } from "@/lib/aiFeatureUi";
 import { factDelta } from "@/lib/reportUi";
@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/Card";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { PageLoader } from "@/components/ui/PageLoader";
 import type { Report, ReportFact } from "@/types/reports";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 function allFacts(report: Report): Record<string, ReportFact> {
   const out: Record<string, ReportFact> = {};
@@ -20,7 +21,7 @@ function allFacts(report: Report): Record<string, ReportFact> {
  * only where both values exist with the same unit. */
 export default function ReportComparePage() {
   const [params] = useSearchParams();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const c = t.reports.comparePage;
   const a = params.get("a");
   const b = params.get("b");
@@ -28,7 +29,7 @@ export default function ReportComparePage() {
 
   if (!a || !b) return <ErrorState message={t.reports.selectTwo} />;
   if (both.status === "loading") return <PageLoader label={t.common.loading} />;
-  if (both.status === "error") return <ErrorState message={errorMessage(both.error)} onRetry={both.refetch} />;
+  if (both.status === "error") return <ErrorState message={apiErrorText(both.error, t, locale)} onRetry={both.refetch} />;
 
   const [ra, rb] = both.data;
   const fa = allFacts(ra);

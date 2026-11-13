@@ -222,11 +222,12 @@ const URGENCY_TONE: Record<AnalysisUrgency, "primary" | "moderate" | "severe"> =
  *   - status "ok": the full structured explanation
  */
 export function AiAnalysisSection({ aiAnalysis }: { aiAnalysis?: AiAnalysisSchema | null }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   if (!aiAnalysis || aiAnalysis.status === "disabled") return null;
 
   if (aiAnalysis.status === "unavailable" || !aiAnalysis.analysis) {
-    return <Alert tone="warning">{aiAnalysis.message || t.result.aiAnalysisUnavailable}</Alert>;
+    // The server's reason is English; other languages get the translated notice.
+    return <Alert tone="warning">{(locale === "en" && aiAnalysis.message) || t.result.aiAnalysisUnavailable}</Alert>;
   }
 
   const a = aiAnalysis.analysis;

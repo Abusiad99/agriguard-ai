@@ -9,12 +9,13 @@ import { Icon } from "@/components/ui/Icon";
 import { useLocale } from "@/context/LocaleContext";
 import { useAsync } from "@/hooks/useAsync";
 import { plantsApi } from "@/lib/endpoints/aiFeatures";
-import { ApiError, type DiagnosisResponse } from "@/types/api";
+import { type DiagnosisResponse } from "@/types/api";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 /** "Track this plant" on a diagnosis: start a new tracked plant from this scan, or
  * attach the scan to one the user already tracks. */
 export function TrackPlantCard({ diagnosis, onTracked }: { diagnosis: DiagnosisResponse; onTracked: () => void }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [name, setName] = useState(diagnosis.plant?.name ? `${diagnosis.plant.name}` : "");
   const [existing, setExisting] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,7 +46,7 @@ export function TrackPlantCard({ diagnosis, onTracked }: { diagnosis: DiagnosisR
       await action();
       onTracked();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setError(apiErrorText(err, t, locale));
     } finally {
       setBusy(false);
     }

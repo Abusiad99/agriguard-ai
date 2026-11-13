@@ -5,7 +5,7 @@ import { Alert } from "@/components/ui/Alert";
 import { useLocale } from "@/context/LocaleContext";
 import type { TrackedPlantInput } from "@/lib/endpoints/aiFeatures";
 import type { TrackedPlant } from "@/types/aiFeatures";
-import { ApiError } from "@/types/api";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 /** Create/edit form for a tracked plant. The location is optional and private to
  * the owner (it is never shown on the outbreak map). */
@@ -14,7 +14,7 @@ export function PlantForm({ initial, onSubmit, onCancel }: {
   onSubmit: (body: TrackedPlantInput & { clear_location?: boolean }) => Promise<unknown>;
   onCancel: () => void;
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const f = t.plants.form;
   const [name, setName] = useState(initial?.name ?? "");
   const [crop, setCrop] = useState(initial?.crop ?? "");
@@ -54,7 +54,7 @@ export function PlantForm({ initial, onSubmit, onCancel }: {
         ...(initial && !hasLocation && initial.latitude != null ? { clear_location: true } : {}),
       });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setError(apiErrorText(err, t, locale));
       setBusy(false);
     }
   };

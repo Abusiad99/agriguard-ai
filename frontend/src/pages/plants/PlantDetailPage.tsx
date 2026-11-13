@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { plantsApi, type TreatmentInput } from "@/lib/endpoints/aiFeatures";
 import { scansApi } from "@/lib/endpoints/scans";
 import { humanizeLabel, recoveryTone } from "@/lib/aiFeatureUi";
@@ -31,6 +31,7 @@ import type {
   TreatmentCategoryRecorded,
   TreatmentStage,
 } from "@/types/aiFeatures";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 const STAGES: TreatmentStage[] = ["unknown", "before_treatment", "during_treatment", "after_treatment"];
 const CATEGORIES: TreatmentCategoryRecorded[] = ["organic", "chemical", "biological", "cultural", "other"];
@@ -94,7 +95,7 @@ export default function PlantDetailPage() {
       refresh();
       return true;
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setActionError(apiErrorText(err, t, locale));
       return false;
     } finally {
       setBusy(null);
@@ -102,7 +103,7 @@ export default function PlantDetailPage() {
   };
 
   const data = shown.current.detail;
-  if (detail.status === "error" && !data) return <ErrorState message={errorMessage(detail.error)} onRetry={detail.refetch} />;
+  if (detail.status === "error" && !data) return <ErrorState message={apiErrorText(detail.error, t, locale)} onRetry={detail.refetch} />;
   if (!data) return <PageLoader label={t.common.loading} />;
 
   const { plant, assessment, treatments, reminders } = data;
@@ -334,7 +335,7 @@ function CompareCard({ plantId, scans }: { plantId: string; scans: PlantScan[] }
         </Select>
       </div>
       {result.status === "loading" && <PageLoader label={t.common.loading} />}
-      {result.status === "error" && <Alert tone="error">{errorMessage(result.error)}</Alert>}
+      {result.status === "error" && <Alert tone="error">{apiErrorText(result.error, t, locale)}</Alert>}
       {result.status === "success" && (
         <>
           <div className="mb-3 w-fit">
@@ -416,7 +417,8 @@ function FollowUpScan({ plantId, linkedIds, onDone }: { plantId: string; linkedI
     try {
       await action();
     } catch (err) {
-      setMessage({ tone: "error", text: err instanceof ApiError ? err.message : t.common.unknownError });
+      const noModel = err instanceof ApiError && err.code === "SERVICE_UNAVAILABLE" && kind === "upload";
+      setMessage({ tone: "error", text: noModel ? t.scan.modelUnavailable : apiErrorText(err, t, locale) });
     } finally {
       setBusy(null);
     }
@@ -430,7 +432,7 @@ function FollowUpScan({ plantId, linkedIds, onDone }: { plantId: string; linkedI
         void act("upload", async () => {
           const res = await scansApi.createScan({ image: file, trackedPlantId: plantId, treatmentStage: stage });
           if (isUnrecognizedPlant(res)) {
-            setMessage({ tone: "warning", text: res.message });
+            setMessage({ tone: "warning", text: `${t.scan.unrecognized}. ${t.scan.unrecognizedBody}` });
           } else {
             setFile(null);
             if (fileRef.current) fileRef.current.value = "";

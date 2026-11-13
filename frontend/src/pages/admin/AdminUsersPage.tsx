@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { adminApi } from "@/lib/endpoints/admin";
 import { useAuth } from "@/context/AuthContext";
 import { PageLoader } from "@/components/ui/PageLoader";
@@ -12,12 +12,12 @@ import { PageHeader } from "@/components/ui/Card";
 import { Pagination } from "@/components/ui/Pagination";
 import { Alert } from "@/components/ui/Alert";
 import type { UserRole } from "@/types/api";
-import { ApiError } from "@/types/api";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 const PAGE_SIZE = 15;
 
 export default function AdminUsersPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { user: currentUser } = useAuth();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -36,7 +36,7 @@ export default function AdminUsersPage() {
       await adminApi.updateUser(userId, { role });
       users.refetch();
     } catch (err) {
-      setRowError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setRowError(apiErrorText(err, t, locale));
     } finally {
       setSavingUserId(null);
     }
@@ -49,7 +49,7 @@ export default function AdminUsersPage() {
       await adminApi.updateUser(userId, { is_active: !isActive });
       users.refetch();
     } catch (err) {
-      setRowError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setRowError(apiErrorText(err, t, locale));
     } finally {
       setSavingUserId(null);
     }
@@ -75,7 +75,7 @@ export default function AdminUsersPage() {
       {rowError && <Alert tone="error">{rowError}</Alert>}
 
       {users.status === "loading" && <PageLoader label={t.common.loading} />}
-      {users.status === "error" && <ErrorState message={errorMessage(users.error)} onRetry={users.refetch} />}
+      {users.status === "error" && <ErrorState message={apiErrorText(users.error, t, locale)} onRetry={users.refetch} />}
 
       {users.status === "success" && (
         <div className="flex flex-col gap-5">

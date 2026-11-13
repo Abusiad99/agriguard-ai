@@ -11,8 +11,8 @@ React + TypeScript + Tailwind CSS frontend for the AgriGuard AI backend (Phase 3
   surface minimal and fully auditable for a project this size.
 
 ## Running locally
-No Docker or NGINX is needed. From the repository root (see the root
-[README.md](../README.md) for the full setup):
+No Docker or NGINX is needed. From the repository root (first-time setup:
+[docs/SETUP_AND_RUN.md](../docs/SETUP_AND_RUN.md)):
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install-frontend.ps1   # npm ci
 powershell -ExecutionPolicy Bypass -File scripts\start-backend.ps1      # API on 127.0.0.1:8000

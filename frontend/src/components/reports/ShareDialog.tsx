@@ -9,7 +9,7 @@ import { useAsync } from "@/hooks/useAsync";
 import { formatTemplate } from "@/lib/aiFeatureUi";
 import { reportsApi } from "@/lib/endpoints/reports";
 import { formatDate } from "@/utils/format";
-import { ApiError } from "@/types/api";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 /** Create, copy and revoke expiring read-only links to a report. The full link is
  * only shown right after creation (the server keeps just a hash of it). */
@@ -32,7 +32,7 @@ export function ShareDialog({ reportId, isOpen, onClose }: { reportId: string; i
       setCopied(false);
       shares.refetch();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setError(apiErrorText(err, t, locale));
     } finally {
       setBusy(false);
     }
@@ -43,7 +43,7 @@ export function ShareDialog({ reportId, isOpen, onClose }: { reportId: string; i
       await reportsApi.revokeShare(reportId, shareId);
       shares.refetch();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t.common.unknownError);
+      setError(apiErrorText(err, t, locale));
     }
   };
 

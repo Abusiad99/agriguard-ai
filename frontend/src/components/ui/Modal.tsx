@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useLocale } from "@/context/LocaleContext";
 import { Icon } from "./Icon";
 
 export function Modal({
@@ -13,6 +14,7 @@ export function Modal({
   title: string;
   children: ReactNode;
 }) {
+  const { t } = useLocale();
   const dialogRef = useRef<HTMLDivElement>(null);
   // Parents usually pass an inline arrow; keep the latest one in a ref so typing in
   // the form (which re-renders the parent) never re-runs the open/close effect.
@@ -60,7 +62,7 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t.common.close}
             className="flex h-9 w-9 items-center justify-center rounded-full text-muted transition-all duration-300 ease-spring hover:rotate-90 hover:bg-ink/[0.06] hover:text-ink"
           >
             <Icon name="close" className="h-5 w-5" strokeWidth={2} />

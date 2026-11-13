@@ -10,7 +10,7 @@ export function Pagination({ page, totalPages, onChange }: { page: number; total
     "hover:-translate-y-0.5 hover:bg-ink/[0.06] active:scale-95 disabled:pointer-events-none disabled:opacity-40";
 
   return (
-    <nav className="glass mx-auto flex w-fit items-center gap-1 rounded-2xl p-1" aria-label="Pagination">
+    <nav className="glass mx-auto flex w-fit items-center gap-1 rounded-2xl p-1" aria-label={t.common.pagination}>
       <button type="button" className={btn} disabled={page <= 1} onClick={() => onChange(page - 1)}>
         <span className="flip-rtl inline-flex">
           <Icon name="chevronLeft" className="h-4 w-4" strokeWidth={2} />

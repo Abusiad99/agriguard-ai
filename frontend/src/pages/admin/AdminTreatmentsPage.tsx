@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocale } from "@/context/LocaleContext";
-import { useAsync, errorMessage } from "@/hooks/useAsync";
+import { useAsync } from "@/hooks/useAsync";
 import { diseasesApi, treatmentsApi } from "@/lib/endpoints/knowledgeBase";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -16,6 +16,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import type { TreatmentCategory, TreatmentResponseSchema } from "@/types/api";
 import { ApiError } from "@/types/api";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 interface TreatmentFormState {
   category: TreatmentCategory;
@@ -40,7 +41,7 @@ const CATEGORY_ICON: Record<TreatmentCategory, IconName> = {
 };
 
 export default function AdminTreatmentsPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const categoryLabel: Record<TreatmentCategory, string> = {
     organic: t.result.organic,
     chemical: t.result.chemical,
@@ -85,11 +86,11 @@ export default function AdminTreatmentsPage() {
   const handleSave = async () => {
     setFormError(null);
     if (!selectedDiseaseId) {
-      setFormError("Select a disease first.");
+      setFormError(t.admin.selectDiseaseFirst);
       return;
     }
     if (!form.instructions.trim()) {
-      setFormError("Instructions are required.");
+      setFormError(t.admin.instructionsRequired);
       return;
     }
     if (dosageMissing) {
@@ -119,7 +120,7 @@ export default function AdminTreatmentsPage() {
       if (err instanceof ApiError && err.code === "DOSAGE_SOURCE_REQUIRED") {
         setFormError(t.admin.dosageRequired);
       } else {
-        setFormError(err instanceof ApiError ? err.message : t.common.unknownError);
+        setFormError(apiErrorText(err, t, locale));
       }
     } finally {
       setIsSaving(false);
@@ -131,13 +132,13 @@ export default function AdminTreatmentsPage() {
       <PageHeader title={t.admin.treatmentsTitle} />
 
       {diseases.status === "loading" && <PageLoader label={t.common.loading} />}
-      {diseases.status === "error" && <ErrorState message={errorMessage(diseases.error)} onRetry={diseases.refetch} />}
+      {diseases.status === "error" && <ErrorState message={apiErrorText(diseases.error, t, locale)} onRetry={diseases.refetch} />}
 
       {diseases.status === "success" && (
         <div className="glass flex flex-wrap items-end gap-3 rounded-panel p-4">
           <div className="min-w-[16rem] flex-1">
-            <Select label="Disease" name="disease" value={selectedDiseaseId} onChange={(e) => setSelectedDiseaseId(e.target.value)}>
-              <option value="">Select a disease…</option>
+            <Select label={t.admin.disease} name="disease" value={selectedDiseaseId} onChange={(e) => setSelectedDiseaseId(e.target.value)}>
+              <option value="">{t.admin.selectDisease}</option>
               {diseases.data.items.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -153,10 +154,10 @@ export default function AdminTreatmentsPage() {
 
       {selectedDiseaseId && treatments.status === "loading" && <PageLoader label={t.common.loading} />}
       {selectedDiseaseId && treatments.status === "error" && (
-        <ErrorState message={errorMessage(treatments.error)} onRetry={treatments.refetch} />
+        <ErrorState message={apiErrorText(treatments.error, t, locale)} onRetry={treatments.refetch} />
       )}
       {selectedDiseaseId && treatments.status === "success" && treatments.data.items.length === 0 && (
-        <EmptyState iconName="beaker" title="No treatments yet" body="Add organic, chemical, or biological treatment guidance for this disease." />
+        <EmptyState iconName="beaker" title={t.admin.noTreatments} body={t.admin.noTreatmentsBody} />
       )}
 
       {selectedDiseaseId && treatments.status === "success" && treatments.data.items.length > 0 && (
@@ -168,7 +169,7 @@ export default function AdminTreatmentsPage() {
                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
                   <Badge tone="primary">{categoryLabel[tr.category]}</Badge>
                   <span className="rounded-lg bg-ink/[0.05] px-2 py-0.5 font-data text-xs text-muted">v{tr.version}</span>
-                  {tr.authority_referral_only && <Badge tone="moderate">Authority referral only</Badge>}
+                  {tr.authority_referral_only && <Badge tone="moderate">{t.admin.referralOnlyBadge}</Badge>}
                 </div>
                 <p className="text-sm leading-relaxed text-ink">{tr.instructions}</p>
                 {tr.source_citation && (
@@ -221,7 +222,7 @@ export default function AdminTreatmentsPage() {
               <Input
                 label={t.admin.sourceCitation}
                 name="source_citation"
-                placeholder="e.g. FAO Pesticide Guideline 2023, p.14"
+                placeholder={t.admin.sourceCitationPlaceholder}
                 value={form.source_citation}
                 onChange={(e) => setForm({ ...form, source_citation: e.target.value })}
                 disabled={form.authority_referral_only}

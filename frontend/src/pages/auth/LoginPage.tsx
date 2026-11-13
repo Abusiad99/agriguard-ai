@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { ApiError } from "@/types/api";
 import { safeRedirectPath } from "@/lib/safeRedirect";
+import { apiErrorText } from "@/lib/apiErrorText";
 
 export default function LoginPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -28,11 +29,10 @@ export default function LoginPage() {
       const from = safeRedirectPath((location.state as { from?: Location } | null)?.from?.pathname);
       navigate(from, { replace: true });
     } catch (err) {
-      if (err instanceof ApiError && err.code === "INVALID_CREDENTIALS") {
-        setError(t.auth.loginError);
-      } else {
-        setError(t.auth.genericError);
-      }
+      // Wrong email/password gets the sign-in wording; anything else (too many attempts,
+      // an invalid email address, no connection) says what actually happened.
+      const wrongCredentials = err instanceof ApiError && err.code === "INVALID_CREDENTIALS";
+      setError(wrongCredentials ? t.auth.loginError : apiErrorText(err, t, locale));
     } finally {
       setIsSubmitting(false);
     }
