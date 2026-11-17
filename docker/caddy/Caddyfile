@@ -1,0 +1,9 @@
+# AgriGuard AI — HTTPS entry point for a public server (used by docker-compose.prod.yml).
+# Caddy obtains and renews the Let's Encrypt certificate for AGRIGUARD_DOMAIN by itself,
+# redirects http:// to https://, and forwards everything to NGINX. It sets
+# X-Forwarded-For (the visitor's address) and X-Forwarded-Proto: https for NGINX.
+
+{$AGRIGUARD_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy nginx:80
+}

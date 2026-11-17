@@ -1024,6 +1024,104 @@ Never delete the network, the volumes or the database to fix this.
   links are refused and weather is fetched; with the example JWT secret the backend refuses to
   start.
 
+### 9.8 Public server with HTTPS (demo for others)
+
+This puts AgriGuard on a Linux server so that anyone can open it at a stable HTTPS address,
+register and sign in. It uses the same Docker stack plus `docker\docker-compose.prod.yml`:
+
+- **Caddy** is the only part reachable from the internet (ports 80 and 443). It obtains and
+  renews a Let's Encrypt certificate by itself and redirects `http://` to `https://`.
+- PostgreSQL, the backend and NGINX publish **no** ports. On a server, a published Docker port
+  is reachable from the whole internet, whatever the firewall says.
+- Each visitor's own address reaches the rate limits, so one person's mistyped passwords never
+  lock others out.
+
+**You need:** a Linux server with Ubuntu 24.04, 2 vCPU, at least 4 GB RAM and a public IPv4
+address that you can log in to with an SSH key, and a DNS name whose A record points at that
+address (for example a free `something.duckdns.org` from duckdns.org). The commands below run
+**on the server**, in its Linux shell (bash), as `root`.
+
+**1. Prepare the server** (Docker Engine with Compose, a 2 GB swap file for builds, a firewall
+that lets in only SSH, HTTP and HTTPS):
+
+```bash
+apt-get update && apt-get -y upgrade
+curl -fsSL https://get.docker.com | sh
+fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw allow 443/udp && ufw --force enable
+```
+
+**2. Get the code and write the settings.** `openssl rand -hex 48` prints a random secret;
+the commands put two of them into `docker/.env` without showing them:
+
+```bash
+git clone https://github.com/Abusiad99/agriguard-ai.git
+cd agriguard-ai/docker
+DOMAIN=your-name.duckdns.org
+cat > .env <<EOF
+COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+COMPOSE_PROFILES=redis
+AGRIGUARD_DOMAIN=$DOMAIN
+CORS_ALLOW_ORIGINS=["https://$DOMAIN"]
+APP_ENV=production
+DEBUG=false
+JWT_SECRET_KEY=$(openssl rand -hex 48)
+POSTGRES_PASSWORD=$(openssl rand -hex 24)
+RATE_LIMIT_AUTH_PER_5MIN=30
+EOF
+chmod 600 .env
+```
+
+`COMPOSE_FILE` and `COMPOSE_PROFILES` make every `docker compose` command on this server use the
+production overlay and the Redis profile, so all commands in sections 9.3 to 9.6 work here
+unchanged. `RATE_LIMIT_AUTH_PER_5MIN=30` allows 30 sign-ins and 30 registrations per 5 minutes
+per address (default 10), for groups that try the demo from one school or office network.
+Keep `.env` private and back it up: without `POSTGRES_PASSWORD` the database cannot be opened.
+
+**3. Build and start** (the first build takes 10 to 20 minutes):
+
+```bash
+docker compose up -d --build
+docker compose ps -a
+```
+
+When `agriguard_postgres`, `agriguard_redis`, `agriguard_backend`, `agriguard_nginx` and
+`agriguard_caddy` are `Up` (the first four `(healthy)`) and `agriguard_frontend_build` is
+`Exited (0)`, open `https://your-name.duckdns.org`. The first visit may take a few seconds
+while Caddy gets the certificate; `docker compose logs caddy` shows it.
+
+**4. Make yourself admin.** Register in the app with your e-mail address, then:
+
+```bash
+docker compose exec backend python -m app.tools.set_role you@example.com admin
+```
+
+New accounts are always farmers; an admin can change roles in the app (**Admin → Users**) from
+then on. Keep admin accounts to the people who run the demo.
+
+**5. Daily backup** (kept 14 days in `/root/agriguard-backups`):
+
+```bash
+mkdir -p /root/agriguard-backups
+cat > /etc/cron.d/agriguard-backup <<'EOF'
+15 3 * * * root cd /root/agriguard-ai/docker && docker compose exec -T postgres pg_dump -U agriguard -d agriguard --format=custom > /root/agriguard-backups/agriguard-$(date +\%Y\%m\%d).dump && find /root/agriguard-backups -name '*.dump' -mtime +14 -delete
+EOF
+```
+
+Copy the backups off the server now and then, for example with `scp`.
+
+**Updating the server** later: in `/root/agriguard-ai`, follow 9.4. Steps 1 to 3, 5 and 6 work
+as written; for step 4 (backup) run:
+
+```bash
+docker compose start postgres
+docker compose exec -T postgres pg_dump -U agriguard -d agriguard --format=custom > /root/agriguard-backups/agriguard-before-upgrade-$(date +%Y%m%d-%H%M).dump
+```
+
+A trained classifier is not part of the deployment: scans answer "model not available" until
+one is placed in the `docker_artifacts_data` volume (see [DATASET_SETUP_GUIDE.md](../DATASET_SETUP_GUIDE.md)).
+
 ---
 
 ## 10. Tests

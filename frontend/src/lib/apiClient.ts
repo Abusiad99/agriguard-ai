@@ -31,6 +31,33 @@ function buildUrl(path: string, query?: RequestOptions["query"]): string {
   return url.pathname + url.search;
 }
 
+/** Error code for a response without the API's JSON error body - for example one produced
+ * by a proxy in front of the backend - so the app can still say what happened. */
+export function codeForStatus(status: number): string {
+  if (status === 429) return "RATE_LIMITED";
+  if (status === 413) return "FILE_TOO_LARGE";
+  if (status === 502 || status === 503 || status === 504) return "SERVICE_UNAVAILABLE";
+  return "UNKNOWN_ERROR";
+}
+
+/** ApiError for a failed response, from its JSON error body when it has a valid one. */
+async function errorFromResponse(res: Response): Promise<ApiError> {
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      const errorBody = (await res.json()) as ApiErrorResponse;
+      if (errorBody && errorBody.error && typeof errorBody.error.code === "string") {
+        return new ApiError(res.status, errorBody);
+      }
+    } catch {
+      // Not valid JSON: fall through to the status-based error.
+    }
+  }
+  return new ApiError(res.status, {
+    error: { code: codeForStatus(res.status), message: res.statusText || "Request failed.", details: [] },
+  });
+}
+
 let refreshInFlight: Promise<boolean> | null = null;
 
 /** Attempts to refresh the access token using the stored refresh token.
@@ -105,13 +132,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const isJson = contentType.includes("application/json");
 
   if (!res.ok) {
-    if (isJson) {
-      const errorBody: ApiErrorResponse = await res.json();
-      throw new ApiError(res.status, errorBody);
-    }
-    throw new ApiError(res.status, {
-      error: { code: "UNKNOWN_ERROR", message: res.statusText || "Request failed.", details: [] },
-    });
+    throw await errorFromResponse(res);
   }
 
   if (isJson) {
@@ -137,14 +158,7 @@ export async function requestBlob(path: string, query?: RequestOptions["query"])
     }
   }
   if (!res.ok) {
-    const contentType = res.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
-      const errorBody: ApiErrorResponse = await res.json();
-      throw new ApiError(res.status, errorBody);
-    }
-    throw new ApiError(res.status, {
-      error: { code: "UNKNOWN_ERROR", message: res.statusText, details: [] },
-    });
+    throw await errorFromResponse(res);
   }
   return res.blob();
 }

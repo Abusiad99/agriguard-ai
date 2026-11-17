@@ -1,0 +1,56 @@
+# AgriGuard AI — public deployment on a Linux server (adds to docker-compose.yml).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile redis up -d --build
+#
+# What it changes:
+# - Caddy is the only service reachable from the internet (ports 80 and 443). It gets an
+#   HTTPS certificate from Let's Encrypt for AGRIGUARD_DOMAIN by itself and forwards to NGINX.
+# - PostgreSQL, the backend and NGINX publish no ports: on a server, a published port is
+#   reachable from the whole internet (Docker bypasses the host firewall for them).
+# - NGINX takes each visitor's address from Caddy, so the per-address rate limits count
+#   visitors separately (docker/nginx/templates/agriguard-real-ip.conf.template).
+# - Two backend workers instead of four (BACKEND_WORKERS), for a 4 GB server.
+#
+# Settings come from docker/.env as usual; see docker/.env.example (section "Public server").
+# Full procedure: docs/SETUP_AND_RUN.md, section 9.8.
+
+services:
+  postgres:
+    ports: !reset []
+
+  backend:
+    ports: !reset []
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000",
+              "--workers", "${BACKEND_WORKERS:-2}"]
+
+  nginx:
+    ports: !reset []
+    environment:
+      AGRIGUARD_CADDY_IP: ${AGRIGUARD_CADDY_IP:-172.28.0.11}
+    volumes:
+      - ./nginx/templates/agriguard-real-ip.conf.template:/etc/nginx/templates/agriguard-real-ip.conf.template:ro
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    container_name: agriguard_caddy
+    restart: unless-stopped
+    environment:
+      AGRIGUARD_DOMAIN: ${AGRIGUARD_DOMAIN:?AGRIGUARD_DOMAIN must be set in docker/.env (for example agriguard-demo.duckdns.org)}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # certificates and the ACME account: keep this volume
+      - caddy_config:/config
+    depends_on:
+      nginx:
+        condition: service_healthy
+    networks:
+      agriguard_network:
+        ipv4_address: ${AGRIGUARD_CADDY_IP:-172.28.0.11}
+
+volumes:
+  caddy_data:
+  caddy_config:

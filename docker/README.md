@@ -156,13 +156,13 @@ returns HTTP 503 (used by the healthcheck); `ai_service: "degraded"` means no tr
 is loaded yet but the rest of the API is fully functional.
 
 ## 6. Production notes
-- **TLS**: this `nginx.conf` terminates plain HTTP on port 80 for local/staging use. For
-  production, either (a) add a `listen 443 ssl;` server block with certificates (e.g. via
-  Let's Encrypt/certbot, mounted as a volume), or (b) terminate TLS at an upstream load
-  balancer (ALB/Cloud Load Balancer) and keep NGINX on HTTP behind it — either is a small,
-  additive change to `docker/nginx/nginx.conf` and does not require any application code
-  changes, since `SecurityHeadersMiddleware` already adds `Strict-Transport-Security` when
-  `APP_ENV=production`.
+- **Public server (HTTPS)**: `docker-compose.prod.yml` adds Caddy in front of NGINX. Caddy
+  gets and renews a Let's Encrypt certificate for `AGRIGUARD_DOMAIN`, redirects `http://` to
+  `https://`, and is the only container with published ports (80, 443). NGINX takes the
+  visitor's address from Caddy (`nginx/templates/agriguard-real-ip.conf.template`), so the
+  per-address rate limits count visitors separately. Procedure:
+  [SETUP_AND_RUN 9.8](../docs/SETUP_AND_RUN.md#98-public-server-with-https-demo-for-others).
+  `SecurityHeadersMiddleware` adds `Strict-Transport-Security` when `APP_ENV=production`.
 - **Secrets**: `JWT_SECRET_KEY` and `POSTGRES_PASSWORD` are read from `.env` (never committed
   — see `.gitignore`/`.dockerignore`). In a real production deployment, prefer your
   orchestrator's secret store (Docker Swarm secrets, Kubernetes Secrets, or a cloud secrets
@@ -173,6 +173,9 @@ is loaded yet but the rest of the API is fully functional.
   file as it is: the service has a fixed `container_name` (`agriguard_backend`), and Compose
   refuses to scale a service with a fixed name. Remove `container_name` (and the published
   `8000` port) from the backend in a production override first.
-- **Ports exposed for local dev only**: `postgres:5432` and `backend:8000` are published to
-  the host for convenience. Remove their `ports:` mappings in a production compose override
-  so only NGINX (port 80/443) is internet-facing.
+- **Ports**: the base compose file publishes `postgres:5432`, `backend:8000` and `nginx:80`
+  to the host for local use. `docker-compose.prod.yml` removes all three; on a server, a
+  published Docker port is reachable from the internet regardless of the host firewall.
+- **Errors produced by NGINX itself** (rate limit 429, upload too large 413, backend down
+  502/503/504) are returned with the API's JSON error body, so the app shows a specific
+  message; errors from the backend pass through unchanged.

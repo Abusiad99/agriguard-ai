@@ -25,6 +25,10 @@ x-backend-common: &backend-common
     # entering through Docker's port proxy (always the case on Docker Desktop)
     # arrives from the gateway — trusting it would let a client spoof its IP.
     FORWARDED_ALLOW_IPS: ${AGRIGUARD_NGINX_IP:-172.28.0.10}
+    # Per-address limits (backend RateLimitMiddleware). Raise them for a public demo that many
+    # people try at once, possibly from one school or office network.
+    RATE_LIMIT_AUTH_PER_5MIN: ${RATE_LIMIT_AUTH_PER_5MIN:-10}
+    RATE_LIMIT_SCAN_PER_HOUR: ${RATE_LIMIT_SCAN_PER_HOUR:-30}
 
   volumes:
     - storage_data:/app/storage
