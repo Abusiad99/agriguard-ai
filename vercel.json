@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["fra1"],
+  "functions": {
+    "asgi.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{datasets/**,docs/**,docker/**,scripts/**,storage/**,artifacts/**,logs/**,.cache/**,.run/**,backend/tests/**,frontend/node_modules/**,frontend/src/**,frontend/public/**,**/__pycache__/**,**/*.md}"
+    }
+  }
+}

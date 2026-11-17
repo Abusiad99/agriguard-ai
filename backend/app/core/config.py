@@ -7,11 +7,12 @@ setting imports `get_settings()` from here. NFR-MAINT-4.
 """
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import List
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/core/config.py -> backend/ -> repository root. Defaults below are
@@ -19,6 +20,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # overrides every path via environment variables (docker/docker-compose.yml).
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
 _REPO_ROOT = _BACKEND_DIR.parent
+
+# Vercel (the free public demo, docs/SETUP_AND_RUN.md section 9.9) sets VERCEL=1. There the
+# deployed code is read-only and only /tmp is writable, so files go to /tmp/agriguard
+# (temporary: report PDFs are rebuilt when missing). Explicit environment variables still win.
+ON_VERCEL = bool(os.environ.get("VERCEL"))
+_WRITABLE_ROOT = Path("/tmp/agriguard") if ON_VERCEL else _REPO_ROOT
 
 DEFAULT_JWT_SECRET = "CHANGE_ME_IN_PRODUCTION_ENV"
 MIN_PRODUCTION_SECRET_LENGTH = 32  # characters; secrets.token_urlsafe(48) gives 64
@@ -47,7 +54,7 @@ class Settings(BaseSettings):
 
     # --- App ---
     app_name: str = "AgriGuard AI"
-    app_env: str = Field(default="development")  # development | staging | production
+    app_env: str = Field(default="production" if ON_VERCEL else "development")  # development | staging | production
     api_prefix: str = "/api/v1"
     debug: bool = Field(default=False)
 
@@ -58,6 +65,11 @@ class Settings(BaseSettings):
     )
     db_pool_size: int = 10
     db_max_overflow: int = 20
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url(cls, value: str) -> str:
+        return normalize_database_url(value)
     db_echo: bool = False
 
     # --- Redis (optional, not required to run) ---
@@ -94,14 +106,14 @@ class Settings(BaseSettings):
 
     # --- Storage ---
     storage_backend: str = Field(default="local")  # local | s3
-    local_storage_dir: str = Field(default=str(_REPO_ROOT / "storage"))
+    local_storage_dir: str = Field(default=str(_WRITABLE_ROOT / "storage"))
     s3_bucket: str = Field(default="")
     s3_endpoint_url: str = Field(default="")
     s3_access_key: str = Field(default="")
     s3_secret_key: str = Field(default="")
 
     # --- AI Pipeline (ties to ai/ package config) ---
-    ai_artifacts_dir: str = Field(default=str(_REPO_ROOT / "artifacts"))
+    ai_artifacts_dir: str = Field(default=str(_WRITABLE_ROOT / "artifacts"))
     ai_artifacts_run_dir: str = Field(default="", description="Explicit run dir override; empty = use latest trained run")
 
     # --- Weather API (FR-WEATHER) ---
@@ -145,10 +157,33 @@ class Settings(BaseSettings):
     # --- CORS ---
     cors_allow_origins: List[str] = ["*"]
 
+    # --- Hosting ---
+    # Request header holding the visitor's address, set by a proxy that overwrites any value
+    # the visitor sends. Empty: the address of the connection is used (behind NGINX, uvicorn
+    # puts the visitor's address there). Vercel overwrites x-real-ip, so it is used there.
+    client_ip_header: str = Field(default="x-real-ip" if ON_VERCEL else "")
+    # Built React app for the backend itself to serve (Vercel serves it from its CDN). Empty:
+    # NGINX or the Vite dev server serves the frontend.
+    frontend_dist_dir: str = Field(default=str(_REPO_ROOT / "frontend" / "dist") if ON_VERCEL else "")
+
     # --- Logging ---
     log_level: str = "INFO"
     log_json: bool = True
-    log_dir: str = Field(default=str(_REPO_ROOT / "logs"))
+    log_dir: str = Field(default=str(_WRITABLE_ROOT / "logs"))
+
+
+def normalize_database_url(url: str) -> str:
+    """Accept a PostgreSQL connection string the way hosting services hand it out: with
+    `postgres://` (Heroku, Vercel and Neon integrations; SQLAlchemy 2 rejects that scheme),
+    in quotes, or as the `psql '...'` command that Neon's dashboard shows."""
+    url = url.strip()
+    if url.startswith("psql "):
+        url = url[len("psql "):].strip()
+    url = url.strip("'\"").strip()
+    for scheme in ("postgres://", "postgresql://"):
+        if url.startswith(scheme):
+            return "postgresql+psycopg2://" + url[len(scheme):]
+    return url
 
 
 def production_config_problems(settings: "Settings") -> List[str]:
@@ -161,6 +196,9 @@ def production_config_problems(settings: "Settings") -> List[str]:
     if settings.jwt_secret_key == DEFAULT_JWT_SECRET or len(settings.jwt_secret_key) < MIN_PRODUCTION_SECRET_LENGTH:
         problems.append(f"JWT_SECRET_KEY must be a random value of at least {MIN_PRODUCTION_SECRET_LENGTH} characters "
                         "(generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\").")
+    if ON_VERCEL and any(h in settings.database_url for h in ("@localhost", "@127.0.0.1")):
+        problems.append("DATABASE_URL is not set: on Vercel it must be the pooled connection string of your "
+                        "Neon database (Project Settings -> Environment Variables).")
     return problems
 
 

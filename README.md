@@ -45,6 +45,7 @@ Compose remains available as an optional deployment method; see
 | Install and run the app for the first time (Windows) | **[docs/SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md)** |
 | Add my datasets and train the models | **[DATASET_SETUP_GUIDE.md](DATASET_SETUP_GUIDE.md)** |
 | Run it with Docker instead, or upgrade an existing Docker installation | [docs/SETUP_AND_RUN.md, section 9](docs/SETUP_AND_RUN.md#9-docker-optional) |
+| Put a free public demo online (Vercel + Neon, $0, no card) | [docs/SETUP_AND_RUN.md, section 9.9](docs/SETUP_AND_RUN.md#99-free-public-demo-vercel--neon-0) |
 
 After the first-time setup, these are the commands you use (from the repository folder):
 

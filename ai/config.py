@@ -45,6 +45,8 @@ def _env_bool(key: str, default: bool) -> bool:
 
 # Project root = two levels up from this file (ai/config.py -> ai/ -> repo root)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# On Vercel (VERCEL=1) the deployed code is read-only; artifacts, cache and logs go to /tmp.
+_WRITABLE_ROOT = Path("/tmp/agriguard") if os.environ.get("VERCEL") else PROJECT_ROOT
 
 
 @dataclass
@@ -53,9 +55,9 @@ class PathConfig:
 
     project_root: Path = PROJECT_ROOT
     datasets_dir: Path = field(default_factory=lambda: Path(_env_str("AGRIGUARD_DATASETS_DIR", str(PROJECT_ROOT / "datasets"))))
-    artifacts_dir: Path = field(default_factory=lambda: Path(_env_str("AGRIGUARD_ARTIFACTS_DIR", str(PROJECT_ROOT / "artifacts"))))
-    cache_dir: Path = field(default_factory=lambda: Path(_env_str("AGRIGUARD_CACHE_DIR", str(PROJECT_ROOT / ".cache"))))
-    logs_dir: Path = field(default_factory=lambda: Path(_env_str("AGRIGUARD_LOGS_DIR", str(PROJECT_ROOT / "logs"))))
+    artifacts_dir: Path = field(default_factory=lambda: Path(_env_str("AGRIGUARD_ARTIFACTS_DIR", str(_WRITABLE_ROOT / "artifacts"))))
+    cache_dir: Path = field(default_factory=lambda: Path(_env_str("AGRIGUARD_CACHE_DIR", str(_WRITABLE_ROOT / ".cache"))))
+    logs_dir: Path = field(default_factory=lambda: Path(_env_str("AGRIGUARD_LOGS_DIR", str(_WRITABLE_ROOT / "logs"))))
 
     def ensure(self) -> None:
         for p in (self.artifacts_dir, self.cache_dir, self.logs_dir):

@@ -1122,6 +1122,91 @@ docker compose exec -T postgres pg_dump -U agriguard -d agriguard --format=custo
 A trained classifier is not part of the deployment: scans answer "model not available" until
 one is placed in the `docker_artifacts_data` volume (see [DATASET_SETUP_GUIDE.md](../DATASET_SETUP_GUIDE.md)).
 
+### 9.9 Free public demo (Vercel + Neon, $0)
+
+A public demo at `https://<project>.vercel.app` that anyone can open, register on and sign in to,
+for $0 and without a credit card. **Vercel** (Hobby plan) serves the website from its CDN and runs
+the API; **Neon** (Free plan) provides PostgreSQL. Docker, Redis and a server are not used. This
+is separate from the Docker setup above and from your local installation, whose data stays on
+your computer.
+
+**What the free plans do not allow** (limits checked on the providers' pages in November 2026):
+
+| Limit | Effect on the demo |
+|---|---|
+| PyTorch does not fit Vercel's free plan | Scans answer "No image classifier is installed on this server". Everything else works |
+| Only `/tmp` is writable, and it is temporary | Report PDFs are rebuilt when needed; uploaded photos are not kept |
+| Requests over 4.5 MB are refused | The app shrinks large photos in the browser before uploading |
+| Neon: 1 GB, 100 compute hours a month; the database sleeps after 5 idle minutes | The first request after a pause takes about a second longer. If a quota runs out, the database stops until the next month; data is kept, nothing is charged |
+| Vercel Hobby: 4 CPU hours, 1 million requests and 100 GB a month; personal, non-commercial use | Far above what a demo for colleagues uses. If a quota runs out, the site stops until 30 days have passed |
+| The backend stops after about 5 idle minutes | The first request after a pause takes a few seconds; the page itself always loads at once |
+| Vercel keeps runtime logs for 1 hour | Look at errors soon after they happen |
+
+**Step 1: database (Neon).**
+
+1. Open https://neon.com and sign up with GitHub, Google or e-mail. No card is asked for.
+2. Create a project: name `agriguard-demo`, **Postgres 16**, cloud **AWS**, region **Europe
+   (Frankfurt)**.
+3. On the project dashboard click **Connect** and keep the page open. You need two connection
+   strings; copy them only into Vercel (step 2), never into chats or files in the repository:
+   - with **Connection pooling** on (the host name contains `-pooler`): the *pooled* string;
+   - with **Connection pooling** off: the *direct* string.
+
+**Step 2: website and API (Vercel).**
+
+1. Open https://vercel.com/signup, choose **Hobby**, and continue with **GitHub**, using the
+   account that can see the repository `Abusiad99/agriguard-ai`.
+2. **Add New → Project**, and import `agriguard-ai`. If it is not listed, click **Adjust GitHub
+   App Permissions** and give Vercel access to this one repository only.
+3. Keep the Root Directory at `./` and leave the build settings empty: `pyproject.toml` and
+   `vercel.json` in the repository define them (FastAPI app `asgi.py`, region Frankfurt).
+4. Open **Environment Variables** and add, for the **Production** environment:
+
+   | Name | Value |
+   |---|---|
+   | `DATABASE_URL` | Neon's *pooled* connection string |
+   | `MIGRATION_DATABASE_URL` | Neon's *direct* connection string |
+   | `JWT_SECRET_KEY` | A new random value: run the one-line command from 9.2 in PowerShell |
+   | `RATE_LIMIT_AUTH_PER_5MIN` | `30` (optional; default 10 sign-ins and registrations per 5 minutes per address) |
+
+   Mark the first three as **Sensitive**. Do not add them to the Preview environment: preview
+   deployments would then use the demo's database.
+5. Click **Deploy**. The build installs the Python packages, applies the database migrations to
+   Neon and builds the React app (a few minutes). A failed migration fails the build, and the
+   previous deployment keeps running.
+6. Vercel shows the address, for example `https://agriguard-ai.vercel.app` (**Settings →
+   Domains** lists it).
+
+**Step 3: check it.** Open `https://<project>.vercel.app/health`; it shows `"status":"ok"` and
+`"database":"ok"` (`"ai_service":"degraded"` is expected: no classifier). Then register in the
+app, sign in, reload the page (you stay signed in) and sign out.
+
+**Step 4: make yourself admin.** New accounts are farmers. Register your account in the app,
+then, in PowerShell in the repository folder (paste Neon's *direct* string at the prompt; it is
+used only in this window):
+
+```powershell
+$env:DATABASE_URL = Read-Host "Neon direct connection string"
+cd backend
+..\.venv\Scripts\python.exe -m app.tools.set_role you@example.com admin
+cd ..
+Remove-Item Env:\DATABASE_URL
+```
+
+From then on, admins change roles in the app (**Admin → Users**).
+
+**Updates.** Every push to `main` deploys again by itself; new migrations are applied during the
+build. Back up the demo database first (Docker Desktop running; paste the *direct* string):
+
+```powershell
+$env:DATABASE_URL = Read-Host "Neon direct connection string"
+docker run --rm -v "${HOME}\agriguard-backups:/out" postgres:16-alpine pg_dump --format=custom --file "/out/neon-demo-$(Get-Date -Format yyyyMMdd-HHmm).dump" "$env:DATABASE_URL"
+Remove-Item Env:\DATABASE_URL
+```
+
+**Pausing or removing the demo.** Vercel: project **Settings → Advanced** pauses or deletes the
+project. Neon: deleting the project deletes its data.
+
 ---
 
 ## 10. Tests

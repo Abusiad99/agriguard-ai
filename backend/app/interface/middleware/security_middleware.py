@@ -16,6 +16,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Match
 
+from app.interface.middleware.client_address import client_address
+
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -55,6 +57,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._prefix = settings.api_prefix.rstrip("/") + "/"
         self._resources: set[str] = set()  # API resources seen to match a registered route
         self._since_prune = 0
+        self._client_ip_header = settings.client_ip_header
 
     def _limit_for(self, path: str) -> tuple[int, int]:
         if path in self._AUTH_PATHS:
@@ -88,8 +91,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Behind nginx this is only the real visitor IP if uvicorn trusts the proxy's
         # X-Forwarded-For (FORWARDED_ALLOW_IPS, set in docker-compose.yml); otherwise
-        # every request shares nginx's IP and one bucket.
-        client_ip = request.client.host if request.client else "unknown"
+        # every request shares nginx's IP and one bucket. On Vercel: CLIENT_IP_HEADER.
+        client_ip = client_address(request, self._client_ip_header)
         limit, window_seconds = self._limit_for(request.url.path)
         key = f"{client_ip}:{self._group_for(request)}"
 

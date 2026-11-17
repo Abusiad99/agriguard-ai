@@ -35,6 +35,9 @@ for _candidate in Path(__file__).resolve().parents:
         break
 
 
+_ML_RUNTIME = {"torch", "torchvision", "timm"}
+
+
 class AiPipelineUnavailableError(Exception):
     """Raised when no trained model run is available (operator has not yet run
     `python train.py`). Distinguished from a transient failure so the API layer can
@@ -61,6 +64,12 @@ class AiPipelineClient:
                 try:
                     from ai.inference.inference_service import InferenceService
                 except ImportError as exc:
+                    if (getattr(exc, "name", None) or "").split(".")[0] in _ML_RUNTIME:
+                        # e.g. the free Vercel deployment, which ships without PyTorch
+                        raise AiPipelineUnavailableError(
+                            "No image classifier is installed on this server (its machine-learning "
+                            "runtime is not deployed), so scans are unavailable."
+                        ) from exc
                     raise AiPipelineUnavailableError(
                         "The 'ai' package could not be imported. Ensure the repository "
                         "root is on PYTHONPATH."

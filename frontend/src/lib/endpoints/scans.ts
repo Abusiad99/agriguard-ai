@@ -1,3 +1,4 @@
+import { shrinkForUpload } from "@/lib/imageUpload";
 import { request, requestBlob } from "@/lib/apiClient";
 import type { TreatmentStage } from "@/types/aiFeatures";
 import type {
@@ -18,9 +19,9 @@ export interface CreateScanParams {
 }
 
 export const scansApi = {
-  createScan: ({ image, latitude, longitude, attachLocation, trackedPlantId, treatmentStage }: CreateScanParams) => {
+  createScan: async ({ image, latitude, longitude, attachLocation, trackedPlantId, treatmentStage }: CreateScanParams) => {
     const formData = new FormData();
-    formData.append("image", image);
+    formData.append("image", await shrinkForUpload(image));
     if (latitude !== undefined) formData.append("latitude", String(latitude));
     if (longitude !== undefined) formData.append("longitude", String(longitude));
     formData.append("attach_location", String(Boolean(attachLocation)));

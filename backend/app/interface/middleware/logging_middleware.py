@@ -12,6 +12,9 @@ import uuid
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+from app.core.config import get_settings
+from app.interface.middleware.client_address import client_address
+
 logger = logging.getLogger("agriguard.requests")
 
 
@@ -28,6 +31,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         logger.info(
             "request_id=%s method=%s path=%s status=%s duration_ms=%s client=%s",
             request_id, request.method, request.url.path, response.status_code,
-            duration_ms, request.client.host if request.client else "unknown",
+            duration_ms, client_address(request, get_settings().client_ip_header),
         )
         return response

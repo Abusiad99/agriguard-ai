@@ -135,12 +135,23 @@ app.include_router(health_router)  # public, unversioned: GET /health
 app.include_router(api_v1_router, prefix=settings.api_prefix)
 
 
-@app.get("/", tags=["System"])
-def root():
-    return {
-        "name": settings.app_name,
-        "status": "running",
-        "docs": "/api/docs",
-        "api_version": "v1",
-        "api_prefix": settings.api_prefix,
-    }
+_frontend_dir = Path(settings.frontend_dist_dir) if settings.frontend_dist_dir else None
+if _frontend_dir is not None and (_frontend_dir / "index.html").is_file():
+    # The built React app (FRONTEND_DIST_DIR; on Vercel frontend/dist, which Vercel serves from
+    # its CDN). These routes have the lowest priority: every API route above wins, and paths
+    # that match no file get index.html so the app's own routes (/dashboard, ...) open.
+    app.frontend("/", directory=_frontend_dir)
+else:
+    if _frontend_dir is not None:
+        logging.getLogger("agriguard.startup").warning(
+            "FRONTEND_DIST_DIR %s has no index.html; the frontend is not served.", _frontend_dir)
+
+    @app.get("/", tags=["System"])
+    def root():
+        return {
+            "name": settings.app_name,
+            "status": "running",
+            "docs": "/api/docs",
+            "api_version": "v1",
+            "api_prefix": settings.api_prefix,
+        }
